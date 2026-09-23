@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# Variables de entorno y secretos
+.env
+.env.*
+
+# IDEs / Editores
+.vscode/
+.idea/
+*.swp
+
+# Logs y bases de datos locales (si aplicara)
+*.log
+*.sqlite
