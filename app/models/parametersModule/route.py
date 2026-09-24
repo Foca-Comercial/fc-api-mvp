@@ -2,9 +2,10 @@ import enum
 from datetime import time
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Integer, String, Time
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, String, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.db.custom_types import IntEnumType
 from app.db.database import Base
 
 if TYPE_CHECKING:
@@ -31,9 +32,8 @@ class Route(Base):
         BigInteger, primary_key=True, autoincrement=True
     )
     name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
-    day_week: Mapped[DayWeek] = mapped_column(Integer, nullable=False)
+    day_week: Mapped[DayWeek] = mapped_column(IntEnumType(DayWeek), nullable=False)
     departure_time: Mapped[time] = mapped_column(Time, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    # PNI
     client_routes: Mapped[list["ClientRoute"]] = relationship(back_populates="route")

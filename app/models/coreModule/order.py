@@ -36,10 +36,6 @@ class Order(Base):
     __tablename__ = "sale_order"
     __table_args__ = (
         CheckConstraint(
-            "state IN ('PENDING','DISPATCHED','DELIVERED','CANCELLED')",
-            name="chk_order_state",
-        ),
-        CheckConstraint(
             "order_total IS NULL OR order_total >= 0", name="chk_order_total"
         ),
         Index("idx_sale_order_client", "id_client"),
@@ -52,12 +48,20 @@ class Order(Base):
     )
     purchase_order: Mapped[str] = mapped_column(String(3), nullable=False)
     creation_datetime: Mapped[datetime] = mapped_column(
-        DateTime, default=func.now(), nullable=False
+        DateTime, server_default=func.now(), nullable=False
     )
     estimated_delivery: Mapped[time | None] = mapped_column(Time, nullable=True)
     dispatch_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     state: Mapped[OrderState] = mapped_column(
-        SQLEnum(OrderState), nullable=False, default=OrderState.PENDING
+        SQLEnum(
+            OrderState,
+            name="chk_order_state",
+            native_enum=False,
+            length=20,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+        default=OrderState.PENDING,
     )
     order_total: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
