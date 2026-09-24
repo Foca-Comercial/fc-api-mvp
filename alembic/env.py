@@ -10,6 +10,7 @@ from sqlalchemy import engine_from_config, pool
 import app.models  # noqa: F401
 from alembic import context
 from app.core.config import settings
+from app.db.custom_types import IntEnumType
 from app.db.database import Base
 
 # this is the Alembic Config object, which provides
@@ -57,6 +58,22 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def render_item(type_, obj, autogen_context):
+    """
+    Personaliza cómo Alembic escribe ciertos tipos en el código autogenerado.
+    Sin esto, un TypeDecorator con argumentos obligatorios (como IntEnumType)
+    se genera vacío y la migración queda rota.
+    """
+    if type_ == "type" and isinstance(obj, IntEnumType):
+        autogen_context.imports.add(
+            f"from {obj.enum_class.__module__} import {obj.enum_class.__name__}"
+        )
+        return f"app.db.custom_types.IntEnumType({obj.enum_class.__name__})"
+
+    # Le dice a Alembic: para cualquier otro tipo, usa su comportamiento por defecto
+    return False
+
+
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode.
 
@@ -75,7 +92,11 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            render_item=render_item,
+        )
 
         with context.begin_transaction():
             context.run_migrations()
