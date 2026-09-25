@@ -1,6 +1,27 @@
-from pydantic import BaseModel, Field  # noqa: F401
+from pydantic import BaseModel, Field
+
+from app.schemas.utils import partial_model
 
 
-# Atributos compartidos
+# Schema Base
 class ClientRouteBase(BaseModel):
+    id_client: int = Field(..., description="Cliente asociado a la ruta")
+    id_route: int = Field(..., description="Ruta asignada al cliente")
+
+
+class ClientRouteCreate(ClientRouteBase):
     pass
+
+
+@partial_model
+class ClientRouteUpdate(ClientRouteBase):
+    pass
+
+
+class ClientRouteResponse(ClientRouteBase):
+    id_client_route: int
+
+    class Config:
+        from_attributes = (
+            True  # Permite mapear directamente el objeto de SQLAlchemy al DTO
+        )

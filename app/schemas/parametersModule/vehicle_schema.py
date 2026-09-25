@@ -1,6 +1,27 @@
-from pydantic import BaseModel, Field  # noqa: F401
+from pydantic import BaseModel, Field
+
+from app.schemas.utils import partial_model
 
 
-# Atributos compartidos
+# Schema Base
 class VehicleBase(BaseModel):
+    name: str = Field(..., max_length=50, description="Nombre del vehículo")
+    active: bool = True
+
+
+class VehicleCreate(VehicleBase):
     pass
+
+
+@partial_model
+class VehicleUpdate(VehicleBase):
+    pass
+
+
+class VehicleResponse(VehicleBase):
+    id_vehicle: int
+
+    class Config:
+        from_attributes = (
+            True  # Permite mapear directamente el objeto de SQLAlchemy al DTO
+        )

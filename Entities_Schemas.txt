@@ -1,0 +1,65 @@
+-- ---------------------------------------------------------------------
+-- 1. ESTRUCTURAS GEOGRÁFICAS Y LOCALIZACIÓN
+-- ---------------------------------------------------------------------
+
+Entidad Zone:
+
+
+Entidad Neighborhood:
+
+
+
+
+-- ---------------------------------------------------------------------
+-- 2. USUARIOS, ROLES Y CONDUCTORES
+-- ---------------------------------------------------------------------
+
+Entidad Person:
+
+
+Entidad User (Tabla: app_user):
+
+
+Entidad Role (Tabla: user_role_type):
+
+
+Entidad User_Role:
+
+
+Entidad Vehicle:
+
+
+Entidad User_Vehicle:
+
+
+-- ---------------------------------------------------------------------
+-- 3. CATÁLOGO, CLIENTES Y RUTAS
+-- ---------------------------------------------------------------------
+
+Entidad Cliente:
+
+
+Entidad Product:
+
+
+Entidad Special_Customer_Price:
+
+
+Entidad Route:
+
+
+Entidad Client_Route:
+
+
+-- ---------------------------------------------------------------------
+-- 4. TRANSACCIONES (ÓRDENES, DETALLE Y CIERRE)
+-- ---------------------------------------------------------------------
+
+Entidad Order (Tabla: sale_order):
+
+
+Entidad Order_Detail:
+
+
+Entidad Shift_Closure:
+
