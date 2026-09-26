@@ -21,3 +21,5 @@ app/.env.*
 # Logs y bases de datos locales (si aplicara)
 *.log
 *.sqlite
+
+*.txt
