@@ -6,7 +6,7 @@ from app.services.base_service import BaseService
 
 class PersonService(BaseService[Person, PersonCreate, PersonUpdate]):
     def __init__(self):
-        # Inyectamos el repositorio instanciado y el nombre para el error 404
+        # Inyectar el repositorio instanciado y el nombre para el error 404
         super().__init__(repository=person_repository, entity_name="Persona")
 
 
