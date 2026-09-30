@@ -11,7 +11,9 @@ from app.services.coreModule.special_customer_price_service import (
     special_customer_price_service,
 )
 
-router = APIRouter(prefix="/specials_customers_prices", tags=["SpecialsCustomersPrice"])
+router = APIRouter(
+    prefix="/specials_customers_prices", tags=["SpecialsCustomersPrices"]
+)
 
 
 @router.get("/", response_model=list[SpecialCustomerPriceResponse])
