@@ -3,7 +3,7 @@ from datetime import time
 from pydantic import BaseModel, Field
 
 from app.models.parametersModule.route import DayWeek
-from app.schemas.utils import partial_model
+from app.utils.helpers.schema_helper import partial_model
 
 
 # Schema Base

@@ -4,7 +4,7 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 
 from app.models.coreModule.order import OrderState
-from app.schemas.utils import partial_model
+from app.utils.helpers.schema_helper import partial_model
 
 
 # Schema Base

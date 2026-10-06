@@ -1,4 +1,3 @@
-import enum
 from datetime import datetime, time
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -18,18 +17,12 @@ from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
+from app.utils.enums.order_state import OrderState
 
 if TYPE_CHECKING:
     from app.models.coreModule.client import Client
     from app.models.coreModule.order_detail import OrderDetail
     from app.models.coreModule.user_vehicle import UserVehicle
-
-
-class OrderState(str, enum.Enum):
-    PENDING = "PENDING"
-    DISPATCHED = "DISPATCHED"
-    DELIVERED = "DELIVERED"
-    CANCELLED = "CANCELLED"
 
 
 class Order(Base):

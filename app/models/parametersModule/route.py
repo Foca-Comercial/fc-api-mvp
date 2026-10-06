@@ -1,4 +1,3 @@
-import enum
 from datetime import time
 from typing import TYPE_CHECKING
 
@@ -7,19 +6,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.custom_types import IntEnumType
 from app.db.database import Base
+from app.utils.enums.day_week import DayWeek
 
 if TYPE_CHECKING:
     from app.models.coreModule.client_route import ClientRoute
-
-
-class DayWeek(enum.IntEnum):
-    MONDAY = 1
-    TUESDAY = 2
-    WEDNESDAY = 3
-    THURSDAY = 4
-    FRIDAY = 5
-    SATURDAY = 6
-    SUNDAY = 7
 
 
 class Route(Base):

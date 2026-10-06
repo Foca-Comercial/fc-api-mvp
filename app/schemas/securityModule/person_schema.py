@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 
-from app.schemas.utils import partial_model
+from app.utils.helpers.schema_helper import partial_model
 
 
 # Schema Base
