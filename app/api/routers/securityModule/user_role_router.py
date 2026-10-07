@@ -36,6 +36,6 @@ def update_user(
     return user_role_service.update(db, id=user_role_id, obj_in=user_role_in)
 
 
-@router.delete("/{user_role_id}", response_model=UserRoleResponse)
+@router.delete("/{user_role_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(user_role_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    return user_role_service.remove(db, id=user_role_id)
+    user_role_service.remove(db, id=user_role_id)

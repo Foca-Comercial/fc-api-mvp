@@ -36,6 +36,6 @@ def update_route(
     return route_service.update(db, id=route_id, obj_in=route_in)
 
 
-@router.delete("/{route_id}", response_model=RouteResponse)
+@router.delete("/{route_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_route(route_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    return route_service.remove(db, id=route_id)
+    route_service.remove(db, id=route_id)

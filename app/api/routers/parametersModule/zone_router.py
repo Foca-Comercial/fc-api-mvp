@@ -36,6 +36,6 @@ def update_zone(
     return zone_service.update(db, id=zone_id, obj_in=zone_in)
 
 
-@router.delete("/{zone_id}", response_model=ZoneResponse)
+@router.delete("/{zone_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_zone(zone_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    return zone_service.remove(db, id=zone_id)
+    zone_service.remove(db, id=zone_id)

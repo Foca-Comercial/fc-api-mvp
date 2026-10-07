@@ -36,6 +36,6 @@ def update_product(
     return product_service.update(db, id=product_id, obj_in=product_in)
 
 
-@router.delete("/{product_id}", response_model=ProductResponse)
+@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_product(product_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    return product_service.remove(db, id=product_id)
+    product_service.remove(db, id=product_id)

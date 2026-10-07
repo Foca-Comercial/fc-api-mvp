@@ -7,10 +7,6 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from app.db.database import Base
-from app.utils.exceptions.business_exceptions import (
-    BusinessValidationError,
-    ConflictError,
-)
 from app.utils.helpers.string_helper import comparison_key
 
 # Definimos los genéricos:
@@ -112,47 +108,3 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             pk_column = self._primary_key_columns[0]
             conditions.append(pk_column != sa_inspect(exclude).identity[0])  # type: ignore
         return bool(db.scalar(select(sa_exists().where(*conditions))))
-
-    def _ensure_unique(
-        self,
-        db: Session,
-        field: str,
-        value: Any,
-        *,
-        label: str,
-        exclude: ModelType | None = None,
-        normalized: bool = False,
-        **scope: Any,  # acota la unicidad (p. ej. id_zone=3)
-    ) -> None:
-        if normalized:
-            found = self.repository.exists_normalized(  # type: ignore
-                db, field, value, exclude=exclude, **scope
-            )
-        else:
-            found = self.repository.exists(  # type: ignore
-                db, exclude=exclude, **{field: value, **scope}
-            )
-        if found:
-            raise ConflictError(f"{label} ya registrado: '{value}'.", field=field)
-
-    def _ensure_reference(
-        self,
-        db: Session,
-        repository: Any,
-        id: Any,
-        *,
-        field: str,
-        label: str,
-    ) -> None:
-        """Verifica que la entidad referenciada exista y esté activa."""
-        obj = repository.get(db, id)
-        if obj is None:
-            raise BusinessValidationError(
-                f"{label} con ID {id} no existe.", field=field
-            )
-        if not getattr(obj, "active", True):
-            raise BusinessValidationError(
-                f"{label} con ID {id} está inactivo.",
-                field=field,
-                code="REFERENCE_INACTIVE",
-            )

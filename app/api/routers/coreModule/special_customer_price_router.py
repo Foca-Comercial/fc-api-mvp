@@ -55,8 +55,6 @@ def update_special(
     )
 
 
-@router.delete(
-    "/{special_customer_price_id}", response_model=SpecialCustomerPriceResponse
-)
+@router.delete("/{special_customer_price_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_special(special_customer_price_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    return special_customer_price_service.remove(db, id=special_customer_price_id)
+    special_customer_price_service.remove(db, id=special_customer_price_id)

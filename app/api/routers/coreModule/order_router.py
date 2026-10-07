@@ -36,6 +36,6 @@ def update_order(
     return order_service.update(db, id=order_id, obj_in=order_in)
 
 
-@router.delete("/{order_id}", response_model=OrderResponse)
+@router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_order(order_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    return order_service.remove(db, id=order_id)
+    order_service.remove(db, id=order_id)

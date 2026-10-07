@@ -36,6 +36,6 @@ def update_client(
     return client_service.update(db, id=client_id, obj_in=client_in)
 
 
-@router.delete("/{client_id}", response_model=ClientResponse)
+@router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_client(client_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    return client_service.remove(db, id=client_id)
+    client_service.remove(db, id=client_id)

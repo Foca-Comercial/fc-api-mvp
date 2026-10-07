@@ -36,6 +36,6 @@ def update_vehicle(
     return vehicle_service.update(db, id=vehicle_id, obj_in=vehicle_in)
 
 
-@router.delete("/{vehicle_id}", response_model=VehicleResponse)
+@router.delete("/{vehicle_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_vehicle(vehicle_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    return vehicle_service.remove(db, id=vehicle_id)
+    vehicle_service.remove(db, id=vehicle_id)

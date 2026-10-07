@@ -45,6 +45,6 @@ def update_neighborhood(
     return neighborhood_service.update(db, id=neighborhood_id, obj_in=neighborhood_in)
 
 
-@router.delete("/{neighborhood_id}", response_model=NeighborhoodResponse)
+@router.delete("/{neighborhood_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_neighborhood(neighborhood_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    return neighborhood_service.remove(db, id=neighborhood_id)
+    neighborhood_service.remove(db, id=neighborhood_id)

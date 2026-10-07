@@ -42,6 +42,6 @@ def update_user(
     return user_vehicle_service.update(db, id=user_vehicle_id, obj_in=user_vehicle_in)
 
 
-@router.delete("/{user_vehicle_id}", response_model=UserVehicleResponse)
+@router.delete("/{user_vehicle_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(user_vehicle_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    return user_vehicle_service.remove(db, id=user_vehicle_id)
+    user_vehicle_service.remove(db, id=user_vehicle_id)

@@ -44,6 +44,6 @@ def update_shift(
     )
 
 
-@router.delete("/{shift_closure_id}", response_model=ShiftClosureResponse)
+@router.delete("/{shift_closure_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_shift(shift_closure_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    return shift_closure_service.remove(db, id=shift_closure_id)
+    shift_closure_service.remove(db, id=shift_closure_id)
