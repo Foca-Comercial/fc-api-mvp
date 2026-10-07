@@ -1,0 +1,402 @@
+[
+    {
+        "name": "EL PATIO CENTRO CULTURAL S.A.S.",
+        "phone": "3000000001",
+        "address": "CR 9 5 17",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 1
+    },
+    {
+        "name": "CHADUHER SAS (ASADERO LAS VEGAS)",
+        "phone": "3000000002",
+        "address": "CL 25 2 01",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 2
+    },
+    {
+        "name": "J Y G SERVICES (RESTAURANTE AVENIDA)",
+        "phone": "3000000003",
+        "address": "CR 5 25 32",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 3
+    },
+    {
+        "name": "RIVART SOLUCIONES ALIMENTARIAS S.A.S. (FRUPY'S)",
+        "phone": "3000000004",
+        "address": "LOCAL 237 C.C SAN PEDRO PLAZA",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 4
+    },
+    {
+        "name": "FRANQUICIAS HUILA S.A.S. (CUBANOS SAN PEDRO PLAZA)",
+        "phone": "3000000005",
+        "address": "CC SAN PEDRO PLAZA",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 5
+    },
+    {
+        "name": "PIPE PARRILLA",
+        "phone": "3000000006",
+        "address": "SAN PEDRO PLAZA",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 6
+    },
+    {
+        "name": "JENCAR S.A.S. LA GRANJA BURGUER (CC SAN PEDRO PLAZA)",
+        "phone": "3000000007",
+        "address": "PLAZOLETA DE COMIDA - 2DO PISO",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 7
+    },
+    {
+        "name": "MELENDEZ TAFUR MARIA CATALINA (AUTENTICOS)",
+        "phone": "3000000008",
+        "address": "CL 7 25 38",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 8
+    },
+    {
+        "name": "SG ASOCIADOS (MERKAR)",
+        "phone": "3000000009",
+        "address": "CL 8 30 A 36",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 9
+    },
+    {
+        "name": "SUPERMERCADO CINCO MENOS LA MARAVILLA 1 (CAMBULOS)",
+        "phone": "3000000010",
+        "address": "CL 33 8 G 04",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 10
+    },
+    {
+        "name": "OSORIO ARCE MONICA ROCIO",
+        "phone": "3000000011",
+        "address": "CL 68 7 56 TORRE 3 APTO 603 - CONJ. MORADA DEL VIENTO FRENTE ESTACION GASOLINA TERPEL -SENA INDUSTRIAL",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 11
+    },
+    {
+        "name": "INS GROUP S.A.S (RESTAURANTE LA CAUSA Y QUIOTO ANTIGUO CUZCO)",
+        "phone": "3000000012",
+        "address": "CC SANTA LUCIA PLAZA",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 12
+    },
+    {
+        "name": "FONDA LOS ARRIEROS HUILA S.A.S",
+        "phone": "3000000013",
+        "address": "CR 5 14 13",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 13
+    },
+    {
+        "name": "CLAROS CALDERON ANGEL EDUARDO (ANTANA SAS)",
+        "phone": "3000000014",
+        "address": "CR 5 A 21 54",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 14
+    },
+    {
+        "name": "PEREZ RIVERA GISELA ( PLAZA ANDINA SEVILLA )",
+        "phone": "3000000015",
+        "address": "CL 21 5 A 55",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 15
+    },
+    {
+        "name": "JENCAR S.A.S. LA GRANJA BURGUER (TENERIFE)",
+        "phone": "3000000016",
+        "address": "CL 21 7 A",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 16
+    },
+    {
+        "name": "PRABHA FOODS S.A.S.",
+        "phone": "3000000017",
+        "address": "CR 7 A 17 04",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 17
+    },
+    {
+        "name": "GRUPO SUDAKA SAS (PIZZA BOX)",
+        "phone": "3000000018",
+        "address": "CR 7 A 19 95",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 18
+    },
+    {
+        "name": "INDUSTRIAS BURGER SAS (HAMBURGO TENERIFE)",
+        "phone": "3000000019",
+        "address": "CL 21 8 B 21",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 19
+    },
+    {
+        "name": "LIZCANO HERNANDEZ MARIA ISABEL (PIZZA BOX ALTICO)",
+        "phone": "3000000020",
+        "address": "CL 6 14 05",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 20
+    },
+    {
+        "name": "BEER 24",
+        "phone": "3000000021",
+        "address": "CL 6 A 13 72",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 21
+    },
+    {
+        "name": "INVERSIONES PINCHO PARRILLA S.A.S. (PINCHO PARRILLA)",
+        "phone": "3000000022",
+        "address": "CL 6 13 77",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 22
+    },
+    {
+        "name": "JENCAR S.A.S. LA GRANJA BURGUER (LA TOMA)",
+        "phone": "3000000023",
+        "address": "AV LA TOMA 11 11",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 23
+    },
+    {
+        "name": "JENCAR S.A.S. LA GRANJA BURGUER (JARDIN)",
+        "phone": "3000000024",
+        "address": "AV BUG. DG 20 34",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 24
+    },
+    {
+        "name": "JENCAR S.A.S. LA GRANJA BURGUER (CONTAINER)",
+        "phone": "3000000025",
+        "address": "CL 8 CON CR 40",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 25
+    },
+    {
+        "name": "ROMERO CORREDOR DANIEL RICARDO (JENCAR CANAIMA)",
+        "phone": "3000000026",
+        "address": "CL 21 SUR 28 71",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 26
+    },
+    {
+        "name": "COOTRANSHUILA LTDA",
+        "phone": "3000000027",
+        "address": "ESTACION DE SERVICIO PLUS +",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 27
+    },
+    {
+        "name": "CHARLES BALANTA ( PUNTO GOURMET )",
+        "phone": "3000000028",
+        "address": "CL 26 SUR 24 12",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 28
+    },
+    {
+        "name": "GARZON ALMONACID CONSTRUCCIONES SAS",
+        "phone": "3000000029",
+        "address": "AV. INES DE DURAN",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 29
+    },
+    {
+        "name": "GUTIERREZ ROCIO (CASA DEL PASTILLAJE)",
+        "phone": "3000000030",
+        "address": "CL 10 5 73",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 30
+    },
+    {
+        "name": "GUTIERREZ ROCIO (CASA DEL PASTILLAJE SEDE GRANJAS)",
+        "phone": "3000000031",
+        "address": "CR 6 27 45",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 31
+    },
+    {
+        "name": "HOYOS PUCCINY CARLOS MAURICIO (ZONA H)",
+        "phone": "3000000032",
+        "address": "CR 9 16 06",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 32
+    },
+    {
+        "name": "HOYOS PUCCINY CARLOS MAURICIO (ALMENDROS)",
+        "phone": "3000000033",
+        "address": "MANHATHAN",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 33
+    },
+    {
+        "name": "GONZALEZ JIMENEZ DANIEL (BILLARES TITANIC)",
+        "phone": "3000000034",
+        "address": "CL 7 3 BIS 01",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 34
+    },
+    {
+        "name": "CAVIZ RESTAURANTE",
+        "phone": "3000000035",
+        "address": "CR 13 6 31",
+        "is_registered": true,
+        "active": true,
+        "id_neighborhood": 35
+    },
+    {
+        "name": "CHANTEL TORTAS Y CAFÉ S.A.S",
+        "phone": "3000000036",
+        "address": "CR 12 7 79",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 36
+    },
+    {
+        "name": "HEREDIA HERNANDEZ KAROL NATALIA (HOTEL TURQUESA)",
+        "phone": "3000000037",
+        "address": "CR 10 7 17 SUR",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 37
+    },
+    {
+        "name": "SERVICIOS TECNICOS INDUSTRIALES DE INSTRUMENTACION J& I SAS",
+        "phone": "3000000038",
+        "address": "CL 14 SUR 23 A 09",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 38
+    },
+    {
+        "name": "MARMOREO (QUIRINAL)",
+        "phone": "3000000039",
+        "address": "CL 18A 5A 16",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 39
+    },
+    {
+        "name": "MUÑOZ OSSO NATALIA (RESTAURANTE LA CASA)",
+        "phone": "3000000040",
+        "address": "CR 14 A 6 44",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 40
+    },
+    {
+        "name": "FERNANDEZ RUIZ MARTHA PATRICIA (RESTAURANTE GRAN VINOS)",
+        "phone": "3000000041",
+        "address": "CR 1 2 A 09",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 41
+    },
+    {
+        "name": "GUACAMAYAS ES S.A.S",
+        "phone": "3000000042",
+        "address": "CR 8 A 28 41",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 42
+    },
+    {
+        "name": "PATARROYO CAROLINA (TROPICAL BRUNCH)",
+        "phone": "3000000043",
+        "address": "CR 13 7 A 33",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 43
+    },
+    {
+        "name": "ROJAS ROJAS CLAUDIA GIOVANNA (CATA CAFE)",
+        "phone": "3000000044",
+        "address": "CL 12 5 45",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 44
+    },
+    {
+        "name": "ALVAREZ MOYANO FABIAN ANDRES (PANADERIA TOSTANA)",
+        "phone": "3000000045",
+        "address": "CL 7 30 23",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 45
+    },
+    {
+        "name": "EXPORTACIONES DE ORIGEN SAS (MURG COFFEE)",
+        "phone": "3000000046",
+        "address": "CR 2 SUR 11 30  AV.. INES GARCIA DURAN",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 46
+    },
+    {
+        "name": "CRUZ DIAZ GILBER (FERRETERIA)",
+        "phone": "3000000047",
+        "address": "CL 19 37 06",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 47
+    },
+    {
+        "name": "ESMERALDA CASETA (CAFETIN COLEGIO TECNICO SUPERIOR)",
+        "phone": "3000000048",
+        "address": "AV TENERIFE CL 21 2 72",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 48
+    },
+    {
+        "name": "PID CONSULTING SAS - SANTA BARBARA",
+        "phone": "3000000049",
+        "address": "CR 6 41 A 16 P",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 49
+    },
+    {
+        "name": "GRAND COMPANY SAS (GRANS AUTOS)",
+        "phone": "3000000050",
+        "address": "CL 18 SUR 6 117",
+        "is_registered": false,
+        "active": true,
+        "id_neighborhood": 50
+    }
+]

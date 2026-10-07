@@ -1,0 +1,17 @@
+[
+    {
+        "name": "ADMINISTRADOR",
+        "description": "Control total del sistema y parametrización",
+        "active": true
+    },
+    {
+        "name": "GESTOR_COMERCIAL",
+        "description": "Toma de pedidos y gestión comercial",
+        "active": true
+    },
+    {
+        "name": "VENDEDOR",
+        "description": "Despacho y transporte",
+        "active": true
+    }
+]

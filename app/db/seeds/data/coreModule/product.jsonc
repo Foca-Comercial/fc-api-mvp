@@ -1,0 +1,170 @@
+[
+    {
+        "code": "011",
+        "name": "BLOQUE PEQUEÑO",
+        "description": "Bloque pequeño de hielo (arroba)",
+        "base_price": 9000.00,
+        "active": true
+    },
+    {
+        "code": "013",
+        "name": "BLOQUE GRANDE",
+        "description": "Bloque grande de hielo de 25K",
+        "base_price": 20000.00,
+        "active": true
+    },
+    {
+        "code": "015",
+        "name": "BLOQUE ALMICHADO",
+        "description": "Bulto de bloque de hielo almichado de 25k",
+        "base_price": 23000.00,
+        "active": true
+    },
+    {
+        "code": "021",
+        "name": "BOLSA TUB 3K",
+        "description": "Bolsa de hielo tubular de 3K",
+        "base_price": 4200.00,
+        "active": true
+    },
+    {
+        "code": "022",
+        "name": "BOLSA TUB 7K",
+        "description": "Bolsa de hielo tubular de 7K",
+        "base_price": 9000.00,
+        "active": true
+    },
+    {
+        "code": "023",
+        "name": "BOLSA TUB 1,5K",
+        "description": "Bolsa de hielo tubular de 1,5K",
+        "base_price": 2200.00,
+        "active": true
+    },
+    {
+        "code": "099",
+        "name": "SOPORTE DE BOTELLON",
+        "description": "Soporte para botellón de agua",
+        "base_price": 20000.00,
+        "active": true
+    },
+    {
+        "code": "024",
+        "name": "BOLSA TUB DE 12,5 KG",
+        "description": "Bolsa de hielo tubular de 12,5K",
+        "base_price": 9000.00,
+        "active": true
+    },
+    {
+        "code": "029",
+        "name": "BOLSA TUB 15K",
+        "description": "Bolsa de hielo tubular de 15K",
+        "base_price": 15000.00,
+        "active": true
+    },
+    {
+        "code": "030",
+        "name": "GARRAFA 5 LITROS",
+        "description": "Agua en botella de 5 litros",
+        "base_price": 4500.00,
+        "active": true
+    },
+    {
+        "code": "031",
+        "name": "AGUA PET 1 LITRO X 6 UNID",
+        "description": "Agua PET de 1 litro por 6 unidades",
+        "base_price": 12000.00,
+        "active": true
+    },
+    {
+        "code": "032",
+        "name": "AGUA DE 6 LITROS",
+        "description": "Agua en presentación de 6 litros",
+        "base_price": 4200.00,
+        "active": true
+    },
+    {
+        "code": "033",
+        "name": "AGUA X24 UNID",
+        "description": "Agua en paca de 24 unidades al clima",
+        "base_price": 5500.00,
+        "active": true
+    },
+    {
+        "code": "034",
+        "name": "AGUA X15 UNID",
+        "description": "Agua en paca de 15 unidades al clima",
+        "base_price": 3700.00,
+        "active": true
+    },
+    {
+        "code": "036",
+        "name": "BOTELLON DE AGUA",
+        "description": "Recarga de botellón de agua",
+        "base_price": 8500.00,
+        "active": true
+    },
+    {
+        "code": "049",
+        "name": "BOTELLON DE AGUA NUEVO",
+        "description": "Botellón de agua nuevo con envase",
+        "base_price": 55000.00,
+        "active": true
+    },
+    {
+        "code": "037",
+        "name": "PET X 300 PACA 24 UNID",
+        "description": "Agua PET de 300 ml en paca de 24 unidades",
+        "base_price": 21000.00,
+        "active": true
+    },
+    {
+        "code": "038",
+        "name": "PET X 500 PACA 12 UNIDA",
+        "description": "Agua PET de 500 ml en paca de 12 unidades",
+        "base_price": 13700.00,
+        "active": true
+    },
+    {
+        "code": "039",
+        "name": "PET X 600 PACA 12 UNID",
+        "description": "Agua PET de 600 ml en paca de 12 unidades",
+        "base_price": 14700.00,
+        "active": true
+    },
+    {
+        "code": "042",
+        "name": "BULTO ESCARCHA",
+        "description": "Bulto de hielo escarcha normal",
+        "base_price": 15000.00,
+        "active": true
+    },
+    {
+        "code": "043",
+        "name": "ARROBA ESCARCHA",
+        "description": "Arroba de hielo escarcha",
+        "base_price": 9000.00,
+        "active": true
+    },
+    {
+        "code": "044",
+        "name": "KILO ESCARCHA",
+        "description": "Kilo de hielo escarcha",
+        "base_price": 280.00,
+        "active": true
+    },
+    {
+        "code": "045",
+        "name": "BOLSA ESCARCHA 15K",
+        "description": "Bolsa de hielo escarcha de 15K",
+        "base_price": 10000.00,
+        "active": true
+    },
+    {
+        "code": "046",
+        "name": "BULTO ESCARCHA FINO",
+        "description": "Bulto de hielo escarcha fino",
+        "base_price": 15000.00,
+        "active": true
+    }
+]

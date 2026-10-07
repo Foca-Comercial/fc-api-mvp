@@ -1,0 +1,198 @@
+[
+    {
+        "name": "HAROLD",
+        "last_name": "SOLORZANO",
+        "phone": "3000000001",
+        "email": "harold.solorzano@empresa.com",
+        "active": true
+    },
+    {
+        "name": "MARYI",
+        "last_name": "COMERCIAL",
+        "phone": "3000000002",
+        "email": "maryi.comercial@empresa.com",
+        "active": true
+    },
+    {
+        "name": "CAROLINA",
+        "last_name": "COMERCIAL",
+        "phone": "3000000003",
+        "email": "carolina.comercial@empresa.com",
+        "active": true
+    },
+    {
+        "name": "CRISTIAN",
+        "last_name": "BRAVO",
+        "phone": "3000000004",
+        "email": "cristian.bravo@empresa.com",
+        "active": true
+    },
+    {
+        "name": "WILLIAM",
+        "last_name": "PEÑA",
+        "phone": "3000000005",
+        "email": "william.pena@empresa.com",
+        "active": true
+    },
+    {
+        "name": "CARLOS",
+        "last_name": "CALDERON",
+        "phone": "3000000006",
+        "email": "carlos.calderon@empresa.com",
+        "active": true
+    },
+    {
+        "name": "CRISTIAN",
+        "last_name": "RICO",
+        "phone": "3000000007",
+        "email": "cristian.rico@empresa.com",
+        "active": true
+    },
+    {
+        "name": "KEVIN",
+        "last_name": "REYES",
+        "phone": "3000000008",
+        "email": "kevin.reyes@empresa.com",
+        "active": true
+    },
+    {
+        "name": "MANOLO",
+        "last_name": "MENZA",
+        "phone": "3000000009",
+        "email": "manolo.menza@empresa.com",
+        "active": true
+    },
+    {
+        "name": "STIBEN",
+        "last_name": "VALDERRAMA",
+        "phone": "3000000010",
+        "email": "stiben.valderrama@empresa.com",
+        "active": true
+    },
+    {
+        "name": "JHON",
+        "last_name": "RIOS",
+        "phone": "3000000011",
+        "email": "jhon.rios@empresa.com",
+        "active": true
+    },
+    {
+        "name": "JOSE",
+        "last_name": "GUARNIZO",
+        "phone": "3000000012",
+        "email": "jose.guarnizo@empresa.com",
+        "active": true
+    },
+    {
+        "name": "JUAN",
+        "last_name": "HERNANDEZ",
+        "phone": "3000000013",
+        "email": "juan.hernandez@empresa.com",
+        "active": true
+    },
+    {
+        "name": "STEVENS",
+        "last_name": "OSPINA",
+        "phone": "3000000014",
+        "email": "stevens.ospina@empresa.com",
+        "active": true
+    },
+    {
+        "name": "PERDOMO",
+        "last_name": "CELEDONIO",
+        "phone": "3000000015",
+        "email": "perdomo.celedonio@empresa.com",
+        "active": true
+    },
+    {
+        "name": "FARAD CENEN",
+        "last_name": "DARIO",
+        "phone": "3000000016",
+        "email": "faradcenen.dario@empresa.com",
+        "active": true
+    },
+    {
+        "name": "WILSON",
+        "last_name": "ROJAS",
+        "phone": "3000000017",
+        "email": "wilson.rojas@empresa.com",
+        "active": true
+    },
+    {
+        "name": "BELTRAN",
+        "last_name": "ESMERALDA",
+        "phone": "3000000018",
+        "email": "beltran.esmeralda@empresa.com",
+        "active": true
+    },
+    {
+        "name": "CARLOS",
+        "last_name": "BARRAGAN",
+        "phone": "3000000019",
+        "email": "carlos.barragan@empresa.com",
+        "active": true
+    },
+    {
+        "name": "RODOLDO",
+        "last_name": "VAZQUES",
+        "phone": "3000000020",
+        "email": "rodolfo.vasquez@empresa.com",
+        "active": true
+    },
+    {
+        "name": "HOLMAN",
+        "last_name": "CAMACHO",
+        "phone": "3000000021",
+        "email": "holman.camacho@empresa.com",
+        "active": true
+    },
+    {
+        "name": "JESUS",
+        "last_name": "PEREZ",
+        "phone": "3000000022",
+        "email": "jesus.perez@empresa.com",
+        "active": true
+    },
+    {
+        "name": "JULIO",
+        "last_name": "MENDOZA",
+        "phone": "3000000023",
+        "email": "julio.mendoza@empresa.com",
+        "active": true
+    },
+    {
+        "name": "MARTIN",
+        "last_name": "DEVIA",
+        "phone": "3000000024",
+        "email": "martin.devia@empresa.com",
+        "active": true
+    },
+    {
+        "name": "ELIZABETH",
+        "last_name": "LOPEZ",
+        "phone": "3000000025",
+        "email": "elizabeth.lopez@empresa.com",
+        "active": true
+    },
+    {
+        "name": "JAIRO HERNADEZ",
+        "last_name": "SANCHEZ",
+        "phone": "3000000026",
+        "email": "jairo.sanchez@empresa.com",
+        "active": true
+    },
+    {
+        "name": "ESTEIVY",
+        "last_name": "CUELLAR",
+        "phone": "3000000027",
+        "email": "esteivy.cuellar@empresa.com",
+        "active": true
+    },
+    {
+        "name": "ANDRADE",
+        "last_name": "CASTAÑEDA",
+        "phone": "3000000028",
+        "email": "andrade.castañeda@empresa.com",
+        "active": true
+    }
+]

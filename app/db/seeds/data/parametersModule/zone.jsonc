@@ -1,0 +1,52 @@
+[
+    {
+        "name": "NOROCCIDENTE",
+        "commune_code": "C1",
+        "active": true
+    },
+    {
+        "name": "NORORIENTE",
+        "commune_code": "C2",
+        "active": true
+    },
+    {
+        "name": "NORTE",
+        "commune_code": "C9",
+        "active": true
+    },
+    {
+        "name": "ENTRE RIOS",
+        "commune_code": "C3",
+        "active": true
+    },
+    {
+        "name": "CENTRO",
+        "commune_code": "C4",
+        "active": true
+    },
+    {
+        "name": "ORIENTE",
+        "commune_code": "C5",
+        "active": true
+    },
+    {
+        "name": "ORIENTE ALTO",
+        "commune_code": "C10",
+        "active": true
+    },
+    {
+        "name": "SUR",
+        "commune_code": "C6",
+        "active": true
+    },
+    {
+        "name": "CENTRO ORIENTE",
+        "commune_code": "C7",
+        "active": true
+    },
+    {
+        "name": "SURORIENTE",
+        "commune_code": "C8",
+        "active": true
+    }
+]

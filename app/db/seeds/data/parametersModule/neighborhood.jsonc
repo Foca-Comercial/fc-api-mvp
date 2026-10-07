@@ -1,0 +1,252 @@
+[
+    {
+        "name": "ACROPOLIS",
+        "id_zone": 1,
+        "active": true
+    },
+    {
+        "name": "AMARANTO",
+        "id_zone": 1,
+        "active": true
+    },
+    {
+        "name": "BALCONES DE LA RIVIERA",
+        "id_zone": 1,
+        "active": true
+    },
+    {
+        "name": "CALIFORNIA",
+        "id_zone": 1,
+        "active": true
+    },
+    {
+        "name": "CAMILO TORRES",
+        "id_zone": 1,
+        "active": true
+    },
+    {
+        "name": "AEROPUERTO",
+        "id_zone": 2,
+        "active": true
+    },
+    {
+        "name": "ALAMOS NORTE",
+        "id_zone": 2,
+        "active": true
+    },
+    {
+        "name": "ALVARO SANCHEZ SILVA",
+        "id_zone": 2,
+        "active": true
+    },
+    {
+        "name": "BOSQUES DE TAMARINDO",
+        "id_zone": 2,
+        "active": true
+    },
+    {
+        "name": "CAMBULOS",
+        "id_zone": 2,
+        "active": true
+    },
+    {
+        "name": "ALBERTO GALINDO",
+        "id_zone": 3,
+        "active": true
+    },
+    {
+        "name": "ALVARO LEYVA LIEVANO",
+        "id_zone": 3,
+        "active": true
+    },
+    {
+        "name": "ARBOLEDA REAL",
+        "id_zone": 3,
+        "active": true
+    },
+    {
+        "name": "SANTA SOFIA",
+        "id_zone": 3,
+        "active": true
+    },
+    {
+        "name": "CALAMARI",
+        "id_zone": 3,
+        "active": true
+    },
+    {
+        "name": "ALCALA",
+        "id_zone": 4,
+        "active": true
+    },
+    {
+        "name": "CAMPO NUÑEZ",
+        "id_zone": 4,
+        "active": true
+    },
+    {
+        "name": "CARACOLI",
+        "id_zone": 4,
+        "active": true
+    },
+    {
+        "name": "CEMENTERIO CENTRAL",
+        "id_zone": 4,
+        "active": true
+    },
+    {
+        "name": "CENTRO DE CONVENCIONES",
+        "id_zone": 4,
+        "active": true
+    },
+    {
+        "name": "BONILLA",
+        "id_zone": 5,
+        "active": true
+    },
+    {
+        "name": "CC LOS COMUNEROS",
+        "id_zone": 5,
+        "active": true
+    },
+    {
+        "name": "CC MEGACENTRO",
+        "id_zone": 5,
+        "active": true
+    },
+    {
+        "name": "CC METROPOLITANO",
+        "id_zone": 5,
+        "active": true
+    },
+    {
+        "name": "CC PASAJE CAMACHO",
+        "id_zone": 5,
+        "active": true
+    },
+    {
+        "name": "20 DE JULIO",
+        "id_zone": 6,
+        "active": true
+    },
+    {
+        "name": "ALAMEDA MONTERREY",
+        "id_zone": 6,
+        "active": true
+    },
+    {
+        "name": "ALTA VISTA",
+        "id_zone": 6,
+        "active": true
+    },
+    {
+        "name": "ALTO LLANO",
+        "id_zone": 6,
+        "active": true
+    },
+    {
+        "name": "ALTOS DE LA FERREIRA",
+        "id_zone": 6,
+        "active": true
+    },
+    {
+        "name": "SIGLO XXI",
+        "id_zone": 7,
+        "active": true
+    },
+    {
+        "name": "ALBERTO YEPES",
+        "id_zone": 7,
+        "active": true
+    },
+    {
+        "name": "PONTEVEDRA",
+        "id_zone": 7,
+        "active": true
+    },
+    {
+        "name": "ALTOS DE MARBELLA",
+        "id_zone": 7,
+        "active": true
+    },
+    {
+        "name": "ANTONIO NARIÑO",
+        "id_zone": 7,
+        "active": true
+    },
+    {
+        "name": "ALTO DEL LIMONAR",
+        "id_zone": 8,
+        "active": true
+    },
+    {
+        "name": "ANDALUCIA Y SUS ETAPAS",
+        "id_zone": 8,
+        "active": true
+    },
+    {
+        "name": "ARISMENDI MORA",
+        "id_zone": 8,
+        "active": true
+    },
+    {
+        "name": "BELLA VISTA",
+        "id_zone": 8,
+        "active": true
+    },
+    {
+        "name": "BAMBU",
+        "id_zone": 8,
+        "active": true
+    },
+    {
+        "name": "ALTAMIRA",
+        "id_zone": 9,
+        "active": true
+    },
+    {
+        "name": "ALTOS DE LA PRADERA (PRADO)",
+        "id_zone": 9,
+        "active": true
+    },
+    {
+        "name": "ALTOS DE MANZANILLO",
+        "id_zone": 9,
+        "active": true
+    },
+    {
+        "name": "ANTIGUA",
+        "id_zone": 9,
+        "active": true
+    },
+    {
+        "name": "LAS BRISAS",
+        "id_zone": 9,
+        "active": true
+    },
+    {
+        "name": "ALFONSO LOPEZ",
+        "id_zone": 10,
+        "active": true
+    },
+    {
+        "name": "BAJO AMERICAS",
+        "id_zone": 10,
+        "active": true
+    },
+    {
+        "name": "BAJO PEDREGAL",
+        "id_zone": 10,
+        "active": true
+    },
+    {
+        "name": "BUENOS AIRES",
+        "id_zone": 10,
+        "active": true
+    },
+    {
+        "name": "CARMEN EMILIA OSPINA - LOS PARQUES",
+        "id_zone": 10,
+        "active": true
+    }
+]

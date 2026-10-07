@@ -1,0 +1,80 @@
+[
+    // RUTA: NORTE MAÑANA
+    {
+        "id_client": 1,
+        "id_route": 1
+    },
+    {
+        "id_client": 2,
+        "id_route": 1
+    },
+    {
+        "id_client": 3,
+        "id_route": 1
+    },
+    // RUTA: CENTRO MAÑANA
+    {
+        "id_client": 4,
+        "id_route": 2
+    },
+    {
+        "id_client": 5,
+        "id_route": 2
+    },
+    {
+        "id_client": 6,
+        "id_route": 2
+    },
+    // RUTA: SUR MAÑANA
+    {
+        "id_client": 7,
+        "id_route": 3
+    },
+    {
+        "id_client": 8,
+        "id_route": 3
+    },
+    {
+        "id_client": 9,
+        "id_route": 3
+    },
+    // RUTA: NORTE TARDE
+    {
+        "id_client": 10,
+        "id_route": 4
+    },
+    {
+        "id_client": 11,
+        "id_route": 4
+    },
+    {
+        "id_client": 12,
+        "id_route": 4
+    },
+    // RUTA: CENTRO TARDE
+    {
+        "id_client": 13,
+        "id_route": 5
+    },
+    {
+        "id_client": 14,
+        "id_route": 5
+    },
+    {
+        "id_client": 15,
+        "id_route": 5
+    },
+    // RUTA: SUR TARDE
+    {
+        "id_client": 16,
+        "id_route": 6
+    },
+    {
+        "id_client": 17,
+        "id_route": 6
+    },
+    {
+        "id_client": 18,
+        "id_route": 6
+    }
+]

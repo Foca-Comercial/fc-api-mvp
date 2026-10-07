@@ -1,0 +1,170 @@
+[
+    {
+        "username": "harold.solorzano",
+        "password": "contraseña",
+        "id_person": 1,
+        "active": true
+    },
+    {
+        "username": "maryi.comercial",
+        "password": "contraseña",
+        "id_person": 2,
+        "active": true
+    },
+    {
+        "username": "carolina.comercial",
+        "password": "contraseña",
+        "id_person": 3,
+        "active": true
+    },
+    {
+        "username": "cristian.bravo",
+        "password": "contraseña",
+        "id_person": 4,
+        "active": true
+    },
+    {
+        "username": "william.pena",
+        "password": "contraseña",
+        "id_person": 5,
+        "active": true
+    },
+    {
+        "username": "carlos.calderon",
+        "password": "contraseña",
+        "id_person": 6,
+        "active": true
+    },
+    {
+        "username": "cristian.rico",
+        "password": "contraseña",
+        "id_person": 7,
+        "active": true
+    },
+    {
+        "username": "kevin.reyes",
+        "password": "contraseña",
+        "id_person": 8,
+        "active": true
+    },
+    {
+        "username": "manolo.menza",
+        "password": "contraseña",
+        "id_person": 9,
+        "active": true
+    },
+    {
+        "username": "stiben.valderrama",
+        "password": "contraseña",
+        "id_person": 10,
+        "active": true
+    },
+    {
+        "username": "jhon.rios",
+        "password": "contraseña",
+        "id_person": 11,
+        "active": true
+    },
+    {
+        "username": "jose.guarnizo",
+        "password": "contraseña",
+        "id_person": 12,
+        "active": true
+    },
+    {
+        "username": "juan.hernandez",
+        "password": "contraseña",
+        "id_person": 13,
+        "active": true
+    },
+    {
+        "username": "stevens.ospina",
+        "password": "contraseña",
+        "id_person": 14,
+        "active": true
+    },
+    {
+        "username": "perdomo.celedonio",
+        "password": "contraseña",
+        "id_person": 15,
+        "active": true
+    },
+    {
+        "username": "faradcenen.dario",
+        "password": "contraseña",
+        "id_person": 16,
+        "active": true
+    },
+    {
+        "username": "wilson.rojas",
+        "password": "contraseña",
+        "id_person": 17,
+        "active": true
+    },
+    {
+        "username": "beltran.esmeralda",
+        "password": "contraseña",
+        "id_person": 18,
+        "active": true
+    },
+    {
+        "username": "carlos.barragan",
+        "password": "contraseña",
+        "id_person": 19,
+        "active": true
+    },
+    {
+        "username": "rodolfo.vasquez",
+        "password": "contraseña",
+        "id_person": 20,
+        "active": true
+    },
+    {
+        "username": "holman.camacho",
+        "password": "contraseña",
+        "id_person": 21,
+        "active": true
+    },
+    {
+        "username": "jesus.perez",
+        "password": "contraseña",
+        "id_person": 22,
+        "active": true
+    },
+    {
+        "username": "julio.mendoza",
+        "password": "contraseña",
+        "id_person": 23,
+        "active": true
+    },
+    {
+        "username": "martin.devia",
+        "password": "contraseña",
+        "id_person": 24,
+        "active": true
+    },
+    {
+        "username": "elizabeth.lopez",
+        "password": "contraseña",
+        "id_person": 25,
+        "active": true
+    },
+    {
+        "username": "jairo.sanchez",
+        "password": "contraseña",
+        "id_person": 26,
+        "active": true
+    },
+    {
+        "username": "esteivy.cuellar",
+        "password": "contraseña",
+        "id_person": 27,
+        "active": true
+    },
+    {
+        "username": "andrade.castaneda",
+        "password": "contraseña",
+        "id_person": 28,
+        "active": true
+    }
+]

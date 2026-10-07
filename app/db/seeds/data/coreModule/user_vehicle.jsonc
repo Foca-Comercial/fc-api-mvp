@@ -1,0 +1,257 @@
+[
+    {
+        "code": "28",
+        "id_user_role": 4,
+        "id_vehicle": 2
+    },
+    {
+        "code": "29",
+        "id_user_role": 5,
+        "id_vehicle": 2
+    },
+    {
+        "code": "30",
+        "id_user_role": 6,
+        "id_vehicle": 2
+    },
+    {
+        "code": "31",
+        "id_user_role": 7,
+        "id_vehicle": 2
+    },
+    {
+        "code": "32",
+        "id_user_role": 8,
+        "id_vehicle": 2
+    },
+    {
+        "code": "33",
+        "id_user_role": 9,
+        "id_vehicle": 2
+    },
+    {
+        "code": "34",
+        "id_user_role": 10,
+        "id_vehicle": 2
+    },
+    {
+        "code": "35",
+        "id_user_role": 11,
+        "id_vehicle": 2
+    },
+    {
+        "code": "36",
+        "id_user_role": 12,
+        "id_vehicle": 2
+    },
+    {
+        "code": "37",
+        "id_user_role": 10,
+        "id_vehicle": 3
+    },
+    {
+        "code": "38",
+        "id_user_role": 6,
+        "id_vehicle": 3
+    },
+    {
+        "code": "39",
+        "id_user_role": 8,
+        "id_vehicle": 3
+    },
+    {
+        "code": "40",
+        "id_user_role": 7,
+        "id_vehicle": 3
+    },
+    {
+        "code": "41",
+        "id_user_role": 5,
+        "id_vehicle": 3
+    },
+    {
+        "code": "42",
+        "id_user_role": 11,
+        "id_vehicle": 3
+    },
+    {
+        "code": "43",
+        "id_user_role": 9,
+        "id_vehicle": 3
+    },
+    {
+        "code": "44",
+        "id_user_role": 13,
+        "id_vehicle": 3
+    },
+    {
+        "code": "45",
+        "id_user_role": 4,
+        "id_vehicle": 3
+    },
+    {
+        "code": "05",
+        "id_user_role": 14,
+        "id_vehicle": 1
+    },
+    {
+        "code": "06",
+        "id_user_role": 15,
+        "id_vehicle": 1
+    },
+    {
+        "code": "07",
+        "id_user_role": 16,
+        "id_vehicle": 1
+    },
+    {
+        "code": "08",
+        "id_user_role": 17,
+        "id_vehicle": 1
+    },
+    {
+        "code": "10",
+        "id_user_role": 18,
+        "id_vehicle": 1
+    },
+    {
+        "code": "12",
+        "id_user_role": 19,
+        "id_vehicle": 1
+    },
+    {
+        "code": "13",
+        "id_user_role": 20,
+        "id_vehicle": 1
+    },
+    {
+        "code": "15",
+        "id_user_role": 21,
+        "id_vehicle": 1
+    },
+    {
+        "code": "16",
+        "id_user_role": 22,
+        "id_vehicle": 1
+    },
+    {
+        "code": "19",
+        "id_user_role": 23,
+        "id_vehicle": 1
+    },
+    {
+        "code": "23",
+        "id_user_role": 24,
+        "id_vehicle": 1
+    },
+    {
+        "code": "24",
+        "id_user_role": 25,
+        "id_vehicle": 1
+    },
+    {
+        "code": "26",
+        "id_user_role": 26,
+        "id_vehicle": 1
+    },
+    {
+        "code": "51",
+        "id_user_role": 4,
+        "id_vehicle": 1
+    },
+    {
+        "code": "52",
+        "id_user_role": 11,
+        "id_vehicle": 1
+    },
+    {
+        "code": "53",
+        "id_user_role": 6,
+        "id_vehicle": 1
+    },
+    {
+        "code": "54",
+        "id_user_role": 5,
+        "id_vehicle": 1
+    },
+    {
+        "code": "55",
+        "id_user_role": 27,
+        "id_vehicle": 1
+    },
+    {
+        "code": "56",
+        "id_user_role": 28,
+        "id_vehicle": 1
+    },
+    {
+        "code": "57",
+        "id_user_role": 7,
+        "id_vehicle": 1
+    },
+    {
+        "code": "58",
+        "id_user_role": 9,
+        "id_vehicle": 1
+    },
+    {
+        "code": "61",
+        "id_user_role": 10,
+        "id_vehicle": 4
+    },
+    {
+        "code": "62",
+        "id_user_role": 7,
+        "id_vehicle": 4
+    },
+    {
+        "code": "63",
+        "id_user_role": 8,
+        "id_vehicle": 4
+    },
+    {
+        "code": "64",
+        "id_user_role": 5,
+        "id_vehicle": 4
+    },
+    {
+        "code": "65",
+        "id_user_role": 11,
+        "id_vehicle": 4
+    },
+    {
+        "code": "66",
+        "id_user_role": 9,
+        "id_vehicle": 4
+    },
+    {
+        "code": "71",
+        "id_user_role": 12,
+        "id_vehicle": 5
+    },
+    {
+        "code": "72",
+        "id_user_role": 7,
+        "id_vehicle": 5
+    },
+    {
+        "code": "73",
+        "id_user_role": 5,
+        "id_vehicle": 5
+    },
+    {
+        "code": "74",
+        "id_user_role": 8,
+        "id_vehicle": 5
+    },
+    {
+        "code": "75",
+        "id_user_role": 11,
+        "id_vehicle": 5
+    },
+    {
+        "code": "76",
+        "id_user_role": 9,
+        "id_vehicle": 5
+    }
+]

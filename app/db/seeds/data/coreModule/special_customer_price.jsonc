@@ -1,0 +1,222 @@
+[
+    // CLIENT_ID 1
+    {
+        "id_client": 1,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 1,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 2
+    {
+        "id_client": 2,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 2,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 3
+    {
+        "id_client": 3,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 3,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 4
+    {
+        "id_client": 4,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 4,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 5
+    {
+        "id_client": 5,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 5,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 6
+    {
+        "id_client": 6,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 6,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 7
+    {
+        "id_client": 7,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 7,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 8
+    {
+        "id_client": 8,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 8,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 9
+    {
+        "id_client": 9,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 9,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 10
+    {
+        "id_client": 10,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 10,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 11
+    {
+        "id_client": 11,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 11,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 12
+    {
+        "id_client": 12,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 12,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 13
+    {
+        "id_client": 13,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 13,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 14
+    {
+        "id_client": 14,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 14,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 15
+    {
+        "id_client": 15,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 15,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 16
+    {
+        "id_client": 16,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 16,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 17
+    {
+        "id_client": 17,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 17,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 18
+    {
+        "id_client": 18,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 18,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 19
+    {
+        "id_client": 19,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 19,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    },
+    // CLIENT_ID 20
+    {
+        "id_client": 20,
+        "id_product": 9,
+        "agreed_price": 11000.00
+    },
+    {
+        "id_client": 20,
+        "id_product": 20,
+        "agreed_price": 9000.00
+    }
+]
