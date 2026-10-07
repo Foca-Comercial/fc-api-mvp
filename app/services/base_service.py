@@ -3,6 +3,11 @@ from typing import Any, Generic, TypeVar
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.strategies.deletion_strategy import (
+    DeletionStrategy,
+    HardDeleteStrategy,
+    SoftDeleteStrategy,
+)
 from app.db.database import Base
 from app.services.validation import (
     ReferenceRule,
@@ -11,6 +16,7 @@ from app.services.validation import (
     ensure_reference,
     ensure_unique,
 )
+from app.utils.enums.delete_type import DeletionType
 from app.utils.exceptions.business_exceptions import (
     EntityNotFoundError,
 )
@@ -54,9 +60,19 @@ class BaseService(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         self._validate_before_update(db, obj_in, db_obj)
         return self.repository.update(db, db_obj=db_obj, obj_in=obj_in)
 
-    def remove(self, db: Session, *, id: Any) -> ModelType:
-        self.get(db, id)
-        return self.repository.remove(db, id=id)
+    def remove(
+        self, db: Session, *, id: Any, strategy_type: DeletionType = DeletionType.SOFT
+    ) -> ModelType:
+
+        strategies: dict[DeletionType, DeletionStrategy] = {
+            DeletionType.SOFT: SoftDeleteStrategy(),
+            DeletionType.HARD: HardDeleteStrategy(),
+        }
+
+        strategy = strategies.get(strategy_type)
+
+        # Inyectarel contexto actual (db, repositorio inyectado y el id) a la estrategia
+        return strategy.execute(db, self.repository, id)  # type: ignore
 
     # --- Hooks opcionales (se sobrescriben en el servicio específico) ---
 

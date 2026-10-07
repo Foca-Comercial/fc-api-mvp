@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -8,6 +8,7 @@ from app.schemas.coreModule.client_schema import (
     ClientUpdate,
 )
 from app.services.coreModule.client_service import client_service
+from app.utils.enums.delete_type import DeletionType
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
 
@@ -37,5 +38,9 @@ def update_client(
 
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_client(client_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    client_service.remove(db, id=client_id)
+def delete_client(
+    client_id: int,
+    strategy: DeletionType = Query(DeletionType.SOFT),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return client_service.remove(db, id=client_id, strategy_type=strategy)

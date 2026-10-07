@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -8,6 +8,7 @@ from app.schemas.coreModule.product_schema import (
     ProductUpdate,
 )
 from app.services.coreModule.product_service import product_service
+from app.utils.enums.delete_type import DeletionType
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -37,5 +38,9 @@ def update_product(
 
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_product(product_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    product_service.remove(db, id=product_id)
+def delete_product(
+    product_id: int,
+    strategy: DeletionType = Query(DeletionType.SOFT),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return product_service.remove(db, id=product_id, strategy_type=strategy)

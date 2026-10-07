@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -8,6 +8,7 @@ from app.schemas.parametersModule.neighborhood_schema import (
     NeighborhoodUpdate,
 )
 from app.services.parametersModule.neighborhood_service import neighborhood_service
+from app.utils.enums.delete_type import DeletionType
 
 router = APIRouter(prefix="/neighborhoods", tags=["Neighborhoods"])
 
@@ -46,5 +47,9 @@ def update_neighborhood(
 
 
 @router.delete("/{neighborhood_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_neighborhood(neighborhood_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    neighborhood_service.remove(db, id=neighborhood_id)
+def delete_neighborhood(
+    neighborhood_id: int,
+    strategy: DeletionType = Query(DeletionType.SOFT),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return neighborhood_service.remove(db, id=neighborhood_id, strategy_type=strategy)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -8,6 +8,7 @@ from app.schemas.parametersModule.route_schema import (
     RouteUpdate,
 )
 from app.services.parametersModule.route_service import route_service
+from app.utils.enums.delete_type import DeletionType
 
 router = APIRouter(prefix="/routes", tags=["Routes"])
 
@@ -37,5 +38,9 @@ def update_route(
 
 
 @router.delete("/{route_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_route(route_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    route_service.remove(db, id=route_id)
+def delete_route(
+    route_id: int,
+    strategy: DeletionType = Query(DeletionType.SOFT),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return route_service.remove(db, id=route_id, strategy_type=strategy)

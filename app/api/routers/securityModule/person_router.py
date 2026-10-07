@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -8,6 +8,7 @@ from app.schemas.securityModule.person_schema import (
     PersonUpdate,
 )
 from app.services.securityModule.person_service import person_service
+from app.utils.enums.delete_type import DeletionType
 
 router = APIRouter(prefix="/persons", tags=["Persons"])
 
@@ -37,5 +38,9 @@ def update_person(
 
 
 @router.delete("/{person_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_person(person_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    person_service.remove(db, id=person_id)
+def delete_person(
+    person_id: int,
+    strategy: DeletionType = Query(DeletionType.SOFT),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return person_service.remove(db, id=person_id, strategy_type=strategy)

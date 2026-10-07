@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -8,6 +8,7 @@ from app.schemas.parametersModule.zone_schema import (
     ZoneUpdate,
 )
 from app.services.parametersModule.zone_service import zone_service
+from app.utils.enums.delete_type import DeletionType
 
 router = APIRouter(prefix="/zones", tags=["Zones"])
 
@@ -37,5 +38,9 @@ def update_zone(
 
 
 @router.delete("/{zone_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_zone(zone_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    zone_service.remove(db, id=zone_id)
+def delete_zone(
+    zone_id: int,
+    strategy: DeletionType = Query(DeletionType.SOFT),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return zone_service.remove(db, id=zone_id, strategy_type=strategy)

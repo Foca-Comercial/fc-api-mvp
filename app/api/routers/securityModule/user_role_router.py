@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -8,6 +8,7 @@ from app.schemas.securityModule.user_role_schema import (
     UserRoleUpdate,
 )
 from app.services.securityModule.user_role_service import user_role_service
+from app.utils.enums.delete_type import DeletionType
 
 router = APIRouter(prefix="/users_roles", tags=["UsersRoles"])
 
@@ -37,5 +38,9 @@ def update_user(
 
 
 @router.delete("/{user_role_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(user_role_id: int, db: Session = Depends(get_db)):  # noqa: B008
-    user_role_service.remove(db, id=user_role_id)
+def delete_user_role(
+    user_role_id: int,
+    strategy: DeletionType = Query(DeletionType.SOFT),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return user_role_service.remove(db, id=user_role_id, strategy_type=strategy)
