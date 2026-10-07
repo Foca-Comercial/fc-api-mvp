@@ -1,6 +1,8 @@
 from typing import Any, Generic, Type, TypeVar  # noqa: F401, UP035
 
 from pydantic import BaseModel
+from sqlalchemy import exists as sa_exists
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -16,10 +18,9 @@ UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
 
 class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     def __init__(self, model: type[ModelType]):
-        """
-        Al heredar, el repositorio específico pasará su modelo SQLAlchemy aquí.
-        """
         self.model = model
+        mapper = sa_inspect(model)
+        self._primary_key_columns = list(mapper.primary_key)
 
     def get_all(
         self, db: Session, *, skip: int = 0, limit: int = 100
@@ -73,3 +74,18 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             db.delete(obj)
             db.commit()
         return obj
+
+    def exists(
+        self, db: Session, *, exclude: ModelType | None = None, **filters: Any
+    ) -> bool:
+        """Indica si hay algún registro que cumpla los filtros.
+
+        `exclude` omite un registro concreto (útil al validar en una actualización).
+        """
+        conditions = [
+            getattr(self.model, field) == value for field, value in filters.items()
+        ]
+        if exclude is not None:
+            pk_column = self._primary_key_columns[0]  # type: ignore
+            conditions.append(pk_column != sa_inspect(exclude).identity[0])  # type: ignore
+        return bool(db.scalar(select(sa_exists().where(*conditions))))
