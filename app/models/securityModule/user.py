@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, String
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -12,7 +12,10 @@ if TYPE_CHECKING:
 
 class User(Base):
     __tablename__ = "app_user"
-    __table_args__ = (Index("idx_app_user_person", "id_person"),)
+    __table_args__ = (
+        UniqueConstraint("id_person", name="uq_app_user_person"),
+        Index("idx_app_user_person", "id_person"),
+    )
 
     id_user: Mapped[int] = mapped_column(
         BigInteger, primary_key=True, autoincrement=True

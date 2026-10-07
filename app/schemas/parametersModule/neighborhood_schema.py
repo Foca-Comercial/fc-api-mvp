@@ -1,11 +1,12 @@
 from pydantic import BaseModel, Field
 
 from app.utils.helpers.schema_helper import partial_model
+from app.utils.schema_types import UpperText
 
 
 # Schema Base
 class NeighborhoodBase(BaseModel):
-    name: str = Field(..., max_length=50, description="Nombre del barrio")
+    name: UpperText = Field(..., max_length=50, description="Nombre del barrio")
     active: bool = True
     id_zone: int = Field(..., description="Zona a la que pertenece el barrio")
 

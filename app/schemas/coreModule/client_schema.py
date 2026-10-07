@@ -1,16 +1,15 @@
 from pydantic import BaseModel, Field
 
 from app.utils.helpers.schema_helper import partial_model
+from app.utils.schema_types import UpperText
 
 
 # Schemba Base
 class ClientBase(BaseModel):
-    name: str = Field(
-        ..., max_length=200, description="Nombre o razón social del cliente"
-    )
-    phone: str | None = Field(None, max_length=10)
-    address: str | None = Field(None, max_length=200)
-    id_neighborhood: int = Field(..., description="Barrio al que pertenece el cliente")
+    name: UpperText = Field(..., max_length=200)
+    phone: str | None = Field(None, pattern=r"^[0-9]{10}$", description="10 dígitos")
+    address: UpperText | None = Field(None, max_length=200)
+    id_neighborhood: int = Field(..., gt=0, description="Barrio del cliente")
     is_registered: bool = False
     active: bool = True
 

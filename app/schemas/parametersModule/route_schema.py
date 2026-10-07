@@ -4,15 +4,14 @@ from pydantic import BaseModel, Field
 
 from app.models.parametersModule.route import DayWeek
 from app.utils.helpers.schema_helper import partial_model
+from app.utils.schema_types import UpperText
 
 
 # Schema Base
 class RouteBase(BaseModel):
-    name: str = Field(..., max_length=50, description="Nombre de la ruta")
-    day_week: DayWeek = Field(
-        ..., description="Día de la semana (1=Lunes ... 7=Domingo)"
-    )
-    departure_time: time = Field(..., description="Hora de salida programada")
+    name: UpperText = Field(..., max_length=50, description="Nombre de la ruta")
+    day_week: DayWeek = Field(..., description="Día de la semana")
+    departure_time: time = Field(..., description="Hora de salida (HH:MM)")
     active: bool = True
 
 

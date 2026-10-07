@@ -5,8 +5,8 @@ from app.utils.helpers.schema_helper import partial_model
 
 # Schema Base
 class ClientRouteBase(BaseModel):
-    id_client: int = Field(..., description="Cliente asociado a la ruta")
-    id_route: int = Field(..., description="Ruta asignada al cliente")
+    id_client: int = Field(..., gt=0, description="Cliente asociado a la ruta")
+    id_route: int = Field(..., gt=0, description="Ruta asignada al cliente")
 
 
 class ClientRouteCreate(ClientRouteBase):

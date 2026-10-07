@@ -3,16 +3,20 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 
 from app.utils.helpers.schema_helper import partial_model
+from app.utils.schema_types import UpperText
 
 
 # Schema Base
 class ProductBase(BaseModel):
-    code: str = Field(
-        ..., min_length=3, max_length=3, description="Código único del producto"
+    code: UpperText = Field(
+        ...,
+        max_length=3,
+        pattern=r"^[0-9]{3}$",
+        description="Código de 3 dígitos",
     )
-    name: str = Field(..., max_length=50)
-    description: str | None = Field(None, max_length=200)
-    base_price: Decimal = Field(..., ge=0, description="Precio base del producto")
+    name: UpperText = Field(..., max_length=50)
+    description: UpperText | None = Field(None, max_length=200)
+    base_price: Decimal = Field(..., ge=0, max_digits=12, decimal_places=2)
     active: bool = True
 
 

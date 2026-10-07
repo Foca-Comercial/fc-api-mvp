@@ -1,12 +1,18 @@
 from pydantic import BaseModel, Field
 
 from app.utils.helpers.schema_helper import partial_model
+from app.utils.schema_types import UpperText
 
 
 # Schema Base
 class ZoneBase(BaseModel):
-    name: str = Field(..., max_length=50, description="Nombre de la zona")
-    commune_code: str = Field(..., max_length=3, description="Código de comuna")
+    name: UpperText = Field(..., max_length=50, description="Nombre de la zona")
+    commune_code: UpperText = Field(
+        ...,
+        max_length=3,
+        pattern=r"^[A-Za-z0-9]+$",
+        description="Código de comuna",
+    )
     active: bool = True
 
 

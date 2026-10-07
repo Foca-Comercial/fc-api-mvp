@@ -11,10 +11,8 @@ class UserVehicleBase(BaseModel):
         max_length=2,
         description="Código identificador (2 caracteres)",
     )
-    id_user_role: int = Field(
-        ..., description="Rol de usuario asociado (conductor + rol)"
-    )
-    id_vehicle: int = Field(..., description="Vehículo asignado")
+    id_user_role: int = Field(..., gt=0, description="Usuario-rol (vendedor)")
+    id_vehicle: int = Field(..., gt=0, description="Vehículo asignado")
 
 
 class UserVehicleCreate(UserVehicleBase):

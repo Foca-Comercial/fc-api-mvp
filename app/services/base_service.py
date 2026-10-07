@@ -4,8 +4,14 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.database import Base
+from app.services.validation import (
+    ReferenceRule,
+    UniqueRule,
+    UniqueTogether,
+    ensure_reference,
+    ensure_unique,
+)
 from app.utils.exceptions.business_exceptions import (
-    ConflictError,
     EntityNotFoundError,
 )
 
@@ -13,8 +19,16 @@ ModelType = TypeVar("ModelType", bound=Base)
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
 
+# Reglas de Validacion
+__all__ = ["BaseService", "ReferenceRule", "UniqueRule", "UniqueTogether"]
+
 
 class BaseService(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
+    # Reglas declarativas: cada servicio sobrescribe las que necesite
+    unique_rules: tuple[UniqueRule, ...] = ()
+    references: tuple[ReferenceRule, ...] = ()
+    unique_together: tuple[UniqueTogether, ...] = ()
+
     def __init__(self, repository: Any, entity_name: str = "Entidad"):
         self.repository = repository
         self.entity_name = entity_name
@@ -47,27 +61,30 @@ class BaseService(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     # --- Hooks opcionales (se sobrescriben en el servicio específico) ---
 
     def _validate_before_create(self, db: Session, obj_in: CreateSchemaType) -> None:
-        """Validaciones de negocio antes de crear. Lanza BusinessError si fallan."""
+        for rule in self._declared_rules():
+            rule.on_create(db, self.repository, obj_in)
 
     def _validate_before_update(
         self, db: Session, obj_in: UpdateSchemaType, existing: ModelType
     ) -> None:
-        """Validaciones de negocio antes de actualizar."""
+        for rule in self._declared_rules():
+            rule.on_update(db, self.repository, obj_in, existing)
 
     def _before_create(self, obj_in: CreateSchemaType) -> CreateSchemaType:
         """Transforma los datos justo antes de persistir (p. ej. hashear)."""
         return obj_in
 
-    # --- Utilidad para los hooks ---
+    # --- Utilidades para los servicios con validaciones propias ---
+
+    def _declared_rules(self) -> tuple[Any, ...]:
+        return (*self.unique_rules, *self.references, *self.unique_together)
 
     def _ensure_unique(
-        self,
-        db: Session,
-        field: str,
-        value: Any,
-        *,
-        label: str,
-        exclude: ModelType | None = None,
+        self, db: Session, field: str, value: Any, *, label: str, **options: Any
     ) -> None:
-        if self.repository.exists(db, exclude=exclude, **{field: value}):
-            raise ConflictError(f"{label} ya registrado: '{value}'.", field=field)
+        ensure_unique(db, self.repository, field, value, label=label, **options)
+
+    def _ensure_reference(
+        self, db: Session, repository: Any, id: Any, *, field: str, label: str
+    ) -> None:
+        ensure_reference(db, repository, id, field=field, label=label)

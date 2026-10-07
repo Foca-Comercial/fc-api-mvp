@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CHAR, BigInteger, ForeignKey, Index
+from sqlalchemy import CHAR, BigInteger, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -15,6 +15,9 @@ if TYPE_CHECKING:
 class UserVehicle(Base):
     __tablename__ = "user_vehicle"
     __table_args__ = (
+        UniqueConstraint(
+            "id_user_role", "id_vehicle", name="uq_user_vehicle_role_vehicle"
+        ),
         Index("idx_user_vehicle_user_role", "id_user_role"),
         Index("idx_user_vehicle_vehicle", "id_vehicle"),
     )

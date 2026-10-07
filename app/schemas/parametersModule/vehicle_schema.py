@@ -1,11 +1,12 @@
 from pydantic import BaseModel, Field
 
 from app.utils.helpers.schema_helper import partial_model
+from app.utils.schema_types import UpperText
 
 
 # Schema Base
 class VehicleBase(BaseModel):
-    name: str = Field(..., max_length=50, description="Nombre del vehículo")
+    name: UpperText = Field(..., max_length=50, description="Nombre del vehículo")
     active: bool = True
 
 
