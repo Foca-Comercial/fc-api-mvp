@@ -22,4 +22,6 @@ app/.env.*
 *.log
 *.sqlite
 
+# Otros
 *.txt
+seeds/
