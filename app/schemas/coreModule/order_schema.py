@@ -31,9 +31,11 @@ class OrderUpdate(OrderBase):
 
 class OrderResponse(OrderBase):
     id_order: int
+    id_user_taker: int
     creation_datetime: datetime
     dispatch_time: time | None
     state: OrderState
+    order_total: Decimal | None
 
     class Config:
         from_attributes = (

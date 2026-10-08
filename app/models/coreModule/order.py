@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from app.models.coreModule.client import Client
     from app.models.coreModule.order_detail import OrderDetail
     from app.models.coreModule.user_vehicle import UserVehicle
+    from app.models.securityModule.user import User
 
 
 class Order(Base):
@@ -34,6 +35,7 @@ class Order(Base):
         Index("idx_sale_order_client", "id_client"),
         Index("idx_sale_order_user_vehicle", "id_user_vehicle"),
         Index("idx_sale_order_state", "state"),
+        Index("idx_sale_order_user_taker", "id_user_taker"),
     )
 
     id_order: Mapped[int] = mapped_column(
@@ -70,6 +72,14 @@ class Order(Base):
         nullable=True,
     )
     user_vehicle: Mapped["UserVehicle | None"] = relationship(back_populates="orders")
+
+    id_user_taker: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("app_user.id_user", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    user_taker: Mapped["User"] = relationship("User", foreign_keys=[id_user_taker])
 
     # PNI
     order_details: Mapped[list["OrderDetail"]] = relationship(back_populates="order")

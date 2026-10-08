@@ -7,6 +7,7 @@ from app.db.database import Base
 from app.models.securityModule.user_session import UserSession
 
 if TYPE_CHECKING:
+    from app.models.coreModule.order import Order
     from app.models.securityModule.person import Person
     from app.models.securityModule.user_role import UserRole
 
@@ -33,4 +34,5 @@ class User(Base):
 
     # PNI
     user_roles: Mapped[list["UserRole"]] = relationship(back_populates="user")
+    orders: Mapped[list["Order"]] = relationship(back_populates="user_taker")
     sessions: Mapped[list["UserSession"]] = relationship(back_populates="user")
