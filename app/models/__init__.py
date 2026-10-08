@@ -14,6 +14,7 @@ from app.models.securityModule.person import Person
 from app.models.securityModule.role import Role
 from app.models.securityModule.user import User
 from app.models.securityModule.user_role import UserRole
+from app.models.securityModule.user_session import UserSession
 
 __all__ = [
     "Client",
@@ -29,6 +30,7 @@ __all__ = [
     "SpecialCustomerPrice",
     "User",
     "UserRole",
+    "UserSession",
     "UserVehicle",
     "Vehicle",
     "Zone",

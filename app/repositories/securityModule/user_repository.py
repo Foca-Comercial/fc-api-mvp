@@ -31,6 +31,14 @@ class RepositoryUser(BaseRepository[User, UserCreate, UserUpdate]):
         )
         return db.scalars(stmt).unique().first()
 
+    def get_by_id_with_roles(self, db: Session, id_user: int) -> User | None:
+        stmt = (
+            select(User)
+            .options(joinedload(User.user_roles).joinedload(UserRole.role))
+            .where(User.id_user == id_user)
+        )
+        return db.scalars(stmt).unique().first()
+
 
 # Intancia del repositorio inyectando el modelo ORM
 user_repository = RepositoryUser(User)

@@ -15,8 +15,6 @@ router = SecuredRouter(prefix="/persons", tags=["Persons"])
 
 
 # @router.get("/", response_model=list[PersonResponse], roles=["GESTOR_COMERCIAL"])
-
-
 @router.get("/", response_model=list[PersonResponse])
 def get_all_persons(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):  # noqa: B008
     return person_service.get_all(db, skip=skip, limit=limit)

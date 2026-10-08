@@ -4,6 +4,7 @@ from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, String, UniqueCon
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
+from app.models.securityModule.user_session import UserSession
 
 if TYPE_CHECKING:
     from app.models.securityModule.person import Person
@@ -32,3 +33,4 @@ class User(Base):
 
     # PNI
     user_roles: Mapped[list["UserRole"]] = relationship(back_populates="user")
+    sessions: Mapped[list["UserSession"]] = relationship(back_populates="user")

@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -27,3 +29,11 @@ def decode_access_token(token: str) -> dict[str, Any]:
         raise UnauthorizedError("La sesión expiró, inicia sesión nuevamente.") from exc
     except InvalidTokenError as exc:
         raise UnauthorizedError("Token inválido.") from exc
+
+
+def generate_refresh_token() -> str:
+    return secrets.token_urlsafe(64)
+
+
+def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
