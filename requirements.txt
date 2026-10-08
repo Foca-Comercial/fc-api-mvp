@@ -7,3 +7,5 @@ pydantic-settings>=2.2.1
 email-validator
 pwdlib[argon2]
 json5
+pyjwt
+python-multipart

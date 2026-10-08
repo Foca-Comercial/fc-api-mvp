@@ -14,33 +14,31 @@ class DeletionStrategy(ABC):
     """Interfaz base para las estrategias de eliminación."""
 
     @abstractmethod
-    def execute(self, db: Session, repository: BaseRepository, entity_id: Any) -> Any:
+    def execute(
+        self, db: Session, repository: BaseRepository, entity_id: Any, entity_name: str
+    ) -> Any:
         pass
 
 
 class SoftDeleteStrategy(DeletionStrategy):
     """Eliminación parcial: Cambia el estado 'active' a False."""
 
-    def execute(self, db: Session, repository: BaseRepository, entity_id: Any) -> Any:
+    def execute(self, db, repository, entity_id, entity_name):
         obj = repository.get(db, entity_id)
         if not obj:
-            raise EntityNotFoundError(repository.model.__name__, entity_id)
-
-        # Validar que la entidad realmente soporte eliminación lógica
+            raise EntityNotFoundError(entity_name, entity_id)
         if not hasattr(obj, "active"):
             raise BusinessRuleViolationError(
-                f"La entidad {repository.model.__name__} no soporta eliminación parcial porque no tiene el atributo 'active'."
+                f"La entidad {entity_name} no soporta eliminación parcial (sin atributo 'active')."
             )
-
-        # Reutilizar el método update del repositorio base pasando un diccionario
         return repository.update(db, db_obj=obj, obj_in={"active": False})
 
 
 class HardDeleteStrategy(DeletionStrategy):
     """Eliminación directa: Borra el registro físicamente de la base de datos."""
 
-    def execute(self, db: Session, repository: BaseRepository, entity_id: Any) -> Any:
+    def execute(self, db, repository, entity_id, entity_name):
         obj = repository.remove(db, id=entity_id)
         if not obj:
-            raise EntityNotFoundError(repository.model.__name__, entity_id)
+            raise EntityNotFoundError(entity_name, entity_id)
         return obj

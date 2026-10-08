@@ -1,4 +1,4 @@
-from typing import Any, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -30,6 +30,10 @@ __all__ = ["BaseService", "ReferenceRule", "UniqueRule", "UniqueTogether"]
 
 
 class BaseService(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
+    _deletion_strategies: ClassVar[dict[DeletionType, DeletionStrategy]] = {
+        DeletionType.SOFT: SoftDeleteStrategy(),
+        DeletionType.HARD: HardDeleteStrategy(),
+    }
     # Reglas declarativas: cada servicio sobrescribe las que necesite
     unique_rules: tuple[UniqueRule, ...] = ()
     references: tuple[ReferenceRule, ...] = ()
@@ -63,16 +67,8 @@ class BaseService(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     def remove(
         self, db: Session, *, id: Any, strategy_type: DeletionType = DeletionType.SOFT
     ) -> ModelType:
-
-        strategies: dict[DeletionType, DeletionStrategy] = {
-            DeletionType.SOFT: SoftDeleteStrategy(),
-            DeletionType.HARD: HardDeleteStrategy(),
-        }
-
-        strategy = strategies.get(strategy_type)
-
-        # Inyectarel contexto actual (db, repositorio inyectado y el id) a la estrategia
-        return strategy.execute(db, self.repository, id)  # type: ignore
+        strategy = self._deletion_strategies[strategy_type]
+        return strategy.execute(db, self.repository, id, self.entity_name)
 
     # --- Hooks opcionales (se sobrescriben en el servicio específico) ---
 

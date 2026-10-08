@@ -39,6 +39,10 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         # db.get() es la sintaxis optimizada de SQLAlchemy 2.0 para buscar por PK
         return db.get(self.model, id)
 
+    def get_by_field(self, db: Session, field: str, value: Any) -> ModelType | None:
+        stmt = select(self.model).where(getattr(self.model, field) == value)
+        return db.scalars(stmt).first()
+
     def create(self, db: Session, *, obj_in: CreateSchemaType) -> ModelType:
         # Convertir el DTO de Pydantic a un diccionario y lo se pasa al modelo ORM
         obj_in_data = obj_in.model_dump()
