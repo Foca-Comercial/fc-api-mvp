@@ -27,7 +27,12 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         self, db: Session, *, skip: int = 0, limit: int = 100
     ) -> list[ModelType]:
         # db.scalars() extrae directamente los objetos de la respuesta
-        stmt = select(self.model).offset(skip).limit(limit)
+        stmt = (
+            select(self.model)
+            .order_by(*[col.asc() for col in self._primary_key_columns])
+            .offset(skip)
+            .limit(limit)
+        )
         return list(db.scalars(stmt).all())
 
     def get(self, db: Session, id: Any) -> ModelType | None:

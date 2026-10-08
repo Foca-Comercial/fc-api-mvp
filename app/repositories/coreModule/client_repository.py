@@ -1,10 +1,26 @@
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.models.coreModule.client import Client
 from app.repositories.base_repository import BaseRepository
 from app.schemas.coreModule.client_schema import ClientCreate, ClientUpdate
 
 
 class RepositoryClient(BaseRepository[Client, ClientCreate, ClientUpdate]):
-    pass
+    def get_all(
+        self, db: Session, *, skip: int = 0, limit: int = 100, only_active: bool = True
+    ) -> list[Client]:
+        stmt = select(self.model)
+
+        if only_active:
+            stmt = stmt.where(self.model.active.is_(True))
+
+        stmt = (
+            stmt.order_by(*[col.asc() for col in self._primary_key_columns])
+            .offset(skip)
+            .limit(limit)
+        )
+        return list(db.scalars(stmt).all())
 
 
 # Intancia del repositorio inyectando el modelo ORM
