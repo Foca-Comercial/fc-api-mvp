@@ -41,7 +41,7 @@ class Order(Base):
     )
     purchase_order: Mapped[str] = mapped_column(String(3), nullable=False)
     creation_datetime: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     estimated_delivery: Mapped[time | None] = mapped_column(Time, nullable=True)
     dispatch_time: Mapped[time | None] = mapped_column(Time, nullable=True)

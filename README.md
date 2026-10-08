@@ -54,3 +54,7 @@ Son ajustes concretos, pero no hace falta implementarlos hoy (depende de decisio
 - **Limitar el `path` de la cookie** a `/api/v1/auth/refresh` (opcional pero recomendado) — así el navegador solo la envía a ese endpoint específico, no a cada petición de la API.
 
 Ninguno de estos cambios afecta el resto de la arquitectura que ya construiste — solo toca `auth_route.py`, `auth_schema.py` y la configuración de CORS en `main.py`.
+
+---
+
+- [ ] Refresh token en cookie - Al implementar el front:
