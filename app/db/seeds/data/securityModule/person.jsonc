@@ -194,5 +194,12 @@
         "phone": "3000000028",
         "email": "andrade.castañeda@empresa.com",
         "active": true
+    },
+    {
+        "name": "HIELO",
+        "last_name": "FOCA",
+        "phone": "3000000000",
+        "email": "hielo.foca@empresa.com",
+        "active": true
     }
 ]

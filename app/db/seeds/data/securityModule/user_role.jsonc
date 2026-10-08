@@ -110,5 +110,9 @@
     {
         "id_user": 28,
         "id_role": 3
+    },
+    {
+        "id_user": 29,
+        "id_role": 1
     }
 ]

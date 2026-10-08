@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import Depends, status
 from sqlalchemy.orm import Session
 
+from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.coreModule.special_customer_price_schema import (
     SpecialCustomerPriceCreate,
@@ -11,7 +12,7 @@ from app.services.coreModule.special_customer_price_service import (
     special_customer_price_service,
 )
 
-router = APIRouter(
+router = SecuredRouter(
     prefix="/specials_customers_prices", tags=["SpecialsCustomersPrices"]
 )
 

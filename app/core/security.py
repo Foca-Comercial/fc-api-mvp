@@ -8,12 +8,14 @@ from app.core.config import settings
 from app.utils.exceptions.business_exceptions import UnauthorizedError
 
 
-def create_access_token(subject: str | int) -> str:
+def create_access_token(subject: str | int, *, roles: list[str] | None = None) -> str:
     """Genera un JWT firmado, con el id del usuario como `sub` y expiración."""
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
     )
-    payload = {"sub": str(subject), "exp": expire}
+    payload: dict[str, Any] = {"sub": str(subject), "exp": expire}
+    if roles is not None:
+        payload["roles"] = roles
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 

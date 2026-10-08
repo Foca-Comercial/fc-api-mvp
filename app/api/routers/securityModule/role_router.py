@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.securityModule.role_schema import (
     RoleCreate,
@@ -10,7 +11,7 @@ from app.schemas.securityModule.role_schema import (
 from app.services.securityModule.role_service import role_service
 from app.utils.enums.delete_type import DeletionType
 
-router = APIRouter(prefix="/roles", tags=["Roles"])
+router = SecuredRouter(prefix="/roles", tags=["Roles"])
 
 
 @router.get("/", response_model=list[RoleResponse])

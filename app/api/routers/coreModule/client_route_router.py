@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import Depends, status
 from sqlalchemy.orm import Session
 
+from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.coreModule.client_route_schema import (
     ClientRouteCreate,
@@ -9,7 +10,7 @@ from app.schemas.coreModule.client_route_schema import (
 )
 from app.services.coreModule.client_route_service import client_route_service
 
-router = APIRouter(prefix="/clients_routes", tags=["ClientsRoutes"])
+router = SecuredRouter(prefix="/client_routes", tags=["ClientRoutes"])
 
 
 @router.get("/", response_model=list[ClientRouteResponse])

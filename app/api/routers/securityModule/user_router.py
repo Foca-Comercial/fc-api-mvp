@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import Depends, status
 from sqlalchemy.orm import Session
 
+from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.securityModule.user_schema import (
     UserCreate,
@@ -9,7 +10,7 @@ from app.schemas.securityModule.user_schema import (
 )
 from app.services.securityModule.user_service import user_service
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = SecuredRouter(prefix="/users", tags=["Users"])
 
 
 @router.get("/", response_model=list[UserResponse])

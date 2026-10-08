@@ -1,7 +1,8 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.securityModule.user import User
+from app.models.securityModule.user_role import UserRole
 from app.repositories.base_repository import BaseRepository
 from app.schemas.securityModule.user_schema import UserCreate, UserUpdate
 
@@ -21,6 +22,14 @@ class RepositoryUser(BaseRepository[User, UserCreate, UserUpdate]):
             .limit(limit)
         )
         return list(db.scalars(stmt).all())
+
+    def get_by_username_with_roles(self, db: Session, username: str) -> User | None:
+        stmt = (
+            select(User)
+            .options(joinedload(User.user_roles).joinedload(UserRole.role))
+            .where(User.username == username)
+        )
+        return db.scalars(stmt).unique().first()
 
 
 # Intancia del repositorio inyectando el modelo ORM

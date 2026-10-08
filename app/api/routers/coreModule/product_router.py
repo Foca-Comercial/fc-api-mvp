@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.coreModule.product_schema import (
     ProductCreate,
@@ -10,7 +11,7 @@ from app.schemas.coreModule.product_schema import (
 from app.services.coreModule.product_service import product_service
 from app.utils.enums.delete_type import DeletionType
 
-router = APIRouter(prefix="/products", tags=["Products"])
+router = SecuredRouter(prefix="/products", tags=["Products"])
 
 
 @router.get("/", response_model=list[ProductResponse])

@@ -1,9 +1,8 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user
+from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
-from app.models.securityModule.user import User
 from app.schemas.securityModule.person_schema import (
     PersonCreate,
     PersonResponse,
@@ -12,16 +11,14 @@ from app.schemas.securityModule.person_schema import (
 from app.services.securityModule.person_service import person_service
 from app.utils.enums.delete_type import DeletionType
 
-router = APIRouter(prefix="/persons", tags=["Persons"])
+router = SecuredRouter(prefix="/persons", tags=["Persons"])
+
+
+# @router.get("/", response_model=list[PersonResponse], roles=["GESTOR_COMERCIAL"])
 
 
 @router.get("/", response_model=list[PersonResponse])
-def get_all_persons(
-    skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db),  # noqa: B008
-    current_user: User = Depends(get_current_user),  # noqa: B008
-):
+def get_all_persons(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):  # noqa: B008
     return person_service.get_all(db, skip=skip, limit=limit)
 
 

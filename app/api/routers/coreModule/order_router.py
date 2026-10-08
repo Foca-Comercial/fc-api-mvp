@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import Depends, status
 from sqlalchemy.orm import Session
 
+from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.coreModule.order_schema import (
     OrderCreate,
@@ -9,7 +10,7 @@ from app.schemas.coreModule.order_schema import (
 )
 from app.services.coreModule.order_service import order_service
 
-router = APIRouter(prefix="/orders", tags=["Orders"])
+router = SecuredRouter(prefix="/orders", tags=["Orders"])
 
 
 @router.get("/", response_model=list[OrderResponse])

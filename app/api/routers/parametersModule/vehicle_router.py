@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.parametersModule.vehicle_schema import (
     VehicleCreate,
@@ -10,7 +11,7 @@ from app.schemas.parametersModule.vehicle_schema import (
 from app.services.parametersModule.vehicle_service import vehicle_service
 from app.utils.enums.delete_type import DeletionType
 
-router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
+router = SecuredRouter(prefix="/vehicles", tags=["Vehicles"])
 
 
 @router.get("/", response_model=list[VehicleResponse])

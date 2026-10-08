@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.parametersModule.route_schema import (
     RouteCreate,
@@ -10,7 +11,7 @@ from app.schemas.parametersModule.route_schema import (
 from app.services.parametersModule.route_service import route_service
 from app.utils.enums.delete_type import DeletionType
 
-router = APIRouter(prefix="/routes", tags=["Routes"])
+router = SecuredRouter(prefix="/routes", tags=["Routes"])
 
 
 @router.get("/", response_model=list[RouteResponse])
