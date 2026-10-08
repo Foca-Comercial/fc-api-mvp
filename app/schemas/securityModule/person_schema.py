@@ -1,17 +1,15 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 from app.utils.helpers.schema_helper import partial_model
-from app.utils.schema_types import LowerText, UpperText
+from app.utils.schema_types import UpperText
 
 
 # Schema Base
 class PersonBase(BaseModel):
     name: UpperText = Field(..., max_length=100)
     last_name: UpperText = Field(..., max_length=100)
-    phone: str | None = Field(None, pattern=r"^[0-9]{10}$", description="10 dígitos")
-    email: LowerText | None = Field(
-        None, max_length=100, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-    )
+    phone: str | None = Field(None, max_length=10)
+    email: EmailStr | None = Field(None, max_length=50)
     active: bool = True
 
 

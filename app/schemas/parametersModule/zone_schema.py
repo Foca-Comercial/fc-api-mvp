@@ -7,12 +7,7 @@ from app.utils.schema_types import UpperText
 # Schema Base
 class ZoneBase(BaseModel):
     name: UpperText = Field(..., max_length=50, description="Nombre de la zona")
-    commune_code: UpperText = Field(
-        ...,
-        max_length=3,
-        pattern=r"^[A-Za-z0-9]+$",
-        description="Código de comuna",
-    )
+    commune_code: UpperText = Field(..., max_length=3, description="Código de comuna")
     active: bool = True
 
 

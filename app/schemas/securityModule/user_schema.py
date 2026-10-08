@@ -6,12 +6,7 @@ from app.utils.schema_types import LowerText
 
 # Schema Base
 class UserBase(BaseModel):
-    username: LowerText = Field(
-        ...,
-        max_length=100,
-        pattern=r"^[A-Za-z0-9._-]+$",
-        description="Nombre de usuario (letras, números, punto, guion)",
-    )
+    username: LowerText = Field(..., max_length=100, description="Nombre de usuario")
     active: bool = True
     id_person: int = Field(..., description="Persona asociada a este usuario")
 

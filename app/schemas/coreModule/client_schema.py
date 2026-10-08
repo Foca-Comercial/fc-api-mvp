@@ -7,7 +7,7 @@ from app.utils.schema_types import UpperText
 # Schemba Base
 class ClientBase(BaseModel):
     name: UpperText = Field(..., max_length=200)
-    phone: str | None = Field(None, pattern=r"^[0-9]{10}$", description="10 dígitos")
+    phone: str | None = Field(None, description="10 dígitos")
     address: UpperText | None = Field(None, max_length=200)
     id_neighborhood: int = Field(..., gt=0, description="Barrio del cliente")
     is_registered: bool = False
