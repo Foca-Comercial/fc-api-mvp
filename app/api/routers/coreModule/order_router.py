@@ -83,6 +83,7 @@ def create_order_existing_client(
     )
 
 
+# Marcar un pedido como despachado
 @router.post(
     "/{id_order}/dispatch",
     response_model=OrderResponse,
@@ -92,6 +93,7 @@ def dispatch_order(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
     return order_service.dispatch_order(db, id_order)
 
 
+# Generar CD
 @router.get(
     "/{id_order}/receipt",
     response_class=Response,
@@ -121,6 +123,16 @@ def get_dispatch_receipt(id_order: int, db: Session = Depends(get_db)):  # noqa:
             "Content-Disposition": f"attachment; filename=CD_{full_order.purchase_order}.pdf"
         },
     )
+
+
+# Marcar un pedido como entregado
+@router.post(
+    "/{id_order}/deliver",
+    response_model=OrderResponse,
+    roles=["GESTOR_COMERCIAL"],
+)
+def deliver_order(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
+    return order_service.deliver_order(db, id_order)
 
 
 @router.get("/{order_id}", response_model=OrderResponse)

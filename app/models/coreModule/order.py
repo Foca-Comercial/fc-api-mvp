@@ -47,6 +47,7 @@ class Order(Base):
     )
     estimated_delivery: Mapped[time | None] = mapped_column(Time, nullable=True)
     dispatch_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    delivery_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     state: Mapped[OrderState] = mapped_column(
         SQLEnum(
             OrderState,

@@ -80,6 +80,7 @@ class OrderResponse(OrderBase):
     id_user_taker: int
     creation_datetime: datetime
     dispatch_time: time | None
+    delivery_time: time | None
     state: OrderState
 
     class Config:

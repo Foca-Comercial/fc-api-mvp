@@ -182,6 +182,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         db.refresh(order)
         return order
 
+    # Marcar pdido como despachado
     def dispatch_order(self, db: Session, id_order: int) -> Order:
         order = self.get(db, id_order)
 
@@ -194,6 +195,25 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
 
         order.state = OrderState.DISPATCHED
         order.dispatch_time = datetime.now(BOGOTA_TZ).time()
+
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+        return order
+
+    # Marcar pdido como entregado
+    def deliver_order(self, db: Session, id_order: int) -> Order:
+        order = self.get(db, id_order)
+
+        if order.state != OrderState.DISPATCHED:
+            raise BusinessValidationError(
+                f"Solo se pueden marcar como entregados los pedidos en estado "
+                f"'DISPATCHED'. Estado actual: '{order.state.value}'.",
+                field="state",
+            )
+
+        order.state = OrderState.DELIVERED
+        order.delivery_time = datetime.now(BOGOTA_TZ).time()
 
         db.add(order)
         db.commit()
@@ -280,6 +300,19 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         db.commit()
         db.refresh(order)
         return order
+
+    _FINAL_STATES = (OrderState.DELIVERED, OrderState.CANCELLED)
+
+    def _validate_before_update(
+        self, db: Session, obj_in: OrderUpdate, existing: Order
+    ) -> None:
+        super()._validate_before_update(db, obj_in, existing)
+        if existing.state in self._FINAL_STATES:
+            raise BusinessValidationError(
+                f"No se puede reasignar el conductor de un pedido en estado "
+                f"'{existing.state.value}'.",
+                field="id_user_vehicle",
+            )
 
 
 order_service = OrderService()
