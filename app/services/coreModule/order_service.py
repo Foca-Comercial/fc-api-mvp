@@ -19,17 +19,29 @@ from app.schemas.coreModule.order_schema import (
     OrderDetailItemModal,
     OrderFullDetailResponse,
     OrderItemInput,
+    OrderItemSync,
     OrderSummaryResponse,
     OrderUpdate,
 )
 from app.services.base_service import BaseService
-from app.utils.exceptions.business_exceptions import EntityNotFoundError
+from app.services.validation import ReferenceRule
+from app.utils.enums.order_state import OrderState
+from app.utils.exceptions.business_exceptions import (
+    BusinessRuleViolationError,
+    BusinessValidationError,
+    EntityNotFoundError,
+)
 
 
 class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
+    references = (
+        ReferenceRule("id_user_vehicle", "Vehículo", user_vehicle_repository),
+    )
+
     def __init__(self):
         super().__init__(repository=order_repository, entity_name="Pedido")
 
+    # Obtiene todos los pedidos del dia
     def get_dashboard_summary(
         self, db: Session, target_date: date
     ) -> list[OrderSummaryResponse]:
@@ -51,6 +63,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             for row in rows
         ]
 
+    # Obtiene los detalles de un pedido
     def get_full_detail(self, db: Session, id_order: int) -> OrderFullDetailResponse:
         order = order_repository.get_order_with_full_relations(db, id_order)
         if not order:
@@ -62,6 +75,8 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
 
         items = [
             OrderDetailItemModal(
+                id_order_detail=detail.id_order_detail,
+                id_product=detail.id_product,
                 product_code=detail.product.code,
                 product_name=detail.product.name,
                 cant=detail.cant,
@@ -174,6 +189,77 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 field="id_product",
                 label="Producto",
             )
+
+    # Actualiacion de Pedido (Quitar, Agregar, Modificar -> Productos)
+    def sync_items(
+        self, db: Session, *, id_order: int, items: list[OrderItemSync]
+    ) -> Order:
+        order = self.get(db, id_order)  # 404 si no existe
+
+        if order.state != OrderState.PENDING:
+            raise BusinessRuleViolationError(
+                f"No se pueden modificar los productos de un pedido en estado "
+                f"'{order.state.value}'. Solo se permite mientras está 'PENDING'."
+            )
+
+        existing_details = {d.id_order_detail: d for d in order.order_details}
+        incoming_ids = {
+            i.id_order_detail for i in items if i.id_order_detail is not None
+        }
+
+        # Validar que todo id_order_detail enviado exista y pertenezca a ESTE pedido
+        for item in items:
+            if (
+                item.id_order_detail is not None
+                and item.id_order_detail not in existing_details
+            ):
+                raise BusinessValidationError(
+                    f"El detalle {item.id_order_detail} no pertenece a este pedido.",
+                    field="id_order_detail",
+                )
+
+        # Eliminar los que ya no vienen en la lista
+        for detail_id, detail in existing_details.items():
+            if detail_id not in incoming_ids:
+                order.order_details.remove(detail)
+                db.delete(detail)
+
+        total = Decimal("0")  # noqa: FURB157
+        for item in items:
+            self._ensure_reference(
+                db,
+                product_repository,
+                item.id_product,
+                field="id_product",
+                label="Producto",
+            )
+            subtotal = item.unit_price * item.cant
+
+            if item.id_order_detail is not None:
+                detail = existing_details[item.id_order_detail]
+                detail.id_product = item.id_product
+                detail.cant = item.cant
+                detail.unit_price = item.unit_price
+                detail.subtotal = subtotal
+                db.add(detail)
+            else:
+                order_detail_repository.add(
+                    db,
+                    obj_in_data={
+                        "id_order": order.id_order,
+                        "id_product": item.id_product,
+                        "cant": item.cant,
+                        "unit_price": item.unit_price,
+                        "subtotal": subtotal,
+                    },
+                )
+            total += subtotal
+
+        order.order_total = total
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+        return order
 
 
 order_service = OrderService()

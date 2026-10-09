@@ -91,6 +91,11 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             db.commit()
         return obj
 
+    def delete(self, db: Session, *, db_obj: ModelType) -> None:
+
+        db.delete(db_obj)
+        db.flush()
+
     def exists(
         self, db: Session, *, exclude: ModelType | None = None, **filters: Any
     ) -> bool:

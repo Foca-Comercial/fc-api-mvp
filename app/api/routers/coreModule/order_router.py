@@ -10,6 +10,7 @@ from app.schemas.coreModule.order_schema import (
     OrderCreateExistingClient,
     OrderCreateNewClient,
     OrderFullDetailResponse,
+    OrderItemsSyncRequest,
     OrderResponse,
     OrderSummaryResponse,
     OrderUpdate,
@@ -85,7 +86,21 @@ def get_order(order_id: int, db: Session = Depends(get_db)):  # noqa: B008
     return order_service.get(db, id=order_id)
 
 
-@router.patch("/{order_id}", response_model=OrderResponse)
+# Actualiacion de Pedido (Quitar, Agregar, Modificar -> Productos)
+@router.put(
+    "/{order_id}/items-order",
+    response_model=OrderWithDetailsResponse,
+    roles=["GESTOR_COMERCIAL"],
+)
+def sync_order_items(
+    order_id: int,
+    body: OrderItemsSyncRequest,
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return order_service.sync_items(db, id_order=order_id, items=body.items)
+
+
+@router.patch("/{order_id}", response_model=OrderResponse, roles=["GESTOR_COMERCIAL"])
 def update_order(
     order_id: int,
     order_in: OrderUpdate,

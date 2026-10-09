@@ -6,7 +6,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.coreModule.order import OrderState
 from app.schemas.coreModule.client_schema import NewClientInput
 from app.schemas.coreModule.order_detail_schema import OrderDetailResponse
-from app.utils.helpers.schema_helper import partial_model
 
 
 # Schema Base
@@ -53,9 +52,24 @@ class OrderCreateExistingClient(OrderCreateBase):
     id_client: int
 
 
-@partial_model
 class OrderUpdate(OrderBase):
-    pass
+    id_user_vehicle: int | None = Field(
+        None, description="Vehículo a asignar (null para desasignar)"
+    )
+
+
+# -----------------------------------------------------
+# Actualiacion de Pedido (Quitar, Agregar, Modificar -> Productos)
+# -----------------------------------------------------
+class OrderItemSync(BaseModel):
+    id_order_detail: int | None = Field(None, description="Null para un producto nuevo")
+    id_product: int
+    cant: int = Field(..., gt=0)
+    unit_price: Decimal = Field(..., ge=0)
+
+
+class OrderItemsSyncRequest(BaseModel):
+    items: list[OrderItemSync] = Field(..., min_length=1)
 
 
 # -----------------------------------------------------
@@ -100,6 +114,8 @@ class OrderSummaryResponse(BaseModel):
 # Schemas para el Modal de Detalles
 # -----------------------------------------------------
 class OrderDetailItemModal(BaseModel):
+    id_order_detail: int
+    id_product: int
     product_code: str
     product_name: str
     cant: int
