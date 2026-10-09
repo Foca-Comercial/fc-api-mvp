@@ -1,7 +1,7 @@
 from datetime import datetime, time
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.coreModule.order import OrderState
 from app.schemas.coreModule.client_schema import NewClientInput
@@ -26,7 +26,9 @@ class OrderCreate(OrderBase):
     pass
 
 
-# Un producto dentro del pedido
+# -----------------------------------------------------
+# Registro de Pedidos: Ítems y Cargas Base
+# -----------------------------------------------------
 class OrderItemInput(BaseModel):
     id_product: int = Field(..., description="Producto vendido")
     cant: int = Field(..., gt=0, description="Cantidad vendida")
@@ -40,6 +42,9 @@ class OrderCreateBase(BaseModel):
     items: list[OrderItemInput] = Field(..., min_length=1)
 
 
+# -----------------------------------------------------
+# Registro de Pedidos: Variantes por Tipo de Cliente
+# -----------------------------------------------------
 class OrderCreateNewClient(OrderCreateBase):
     client: NewClientInput
 
@@ -53,6 +58,9 @@ class OrderUpdate(OrderBase):
     pass
 
 
+# -----------------------------------------------------
+# Registro de Pedidos: Respuesta tras registrar un pedido
+# -----------------------------------------------------
 class OrderResponse(OrderBase):
     id_order: int
     id_user_taker: int
@@ -68,3 +76,59 @@ class OrderResponse(OrderBase):
 
 class OrderWithDetailsResponse(OrderResponse):
     order_details: list[OrderDetailResponse] = []
+
+
+# -----------------------------------------------------
+# Schema para la Tabla Principal (Dashboard)
+# -----------------------------------------------------
+class OrderSummaryResponse(BaseModel):
+    id_order: int
+    purchase_order: str
+    creation_time: str
+    client_name: str
+    zone_name: str
+    product_codes: str
+    total_quantity: int
+    driver_code: str | None
+    driver_name: str | None
+    state: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# -----------------------------------------------------
+# Schemas para el Modal de Detalles
+# -----------------------------------------------------
+class OrderDetailItemModal(BaseModel):
+    product_code: str
+    product_name: str
+    cant: int
+    unit_price: Decimal
+    subtotal: Decimal
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrderFullDetailResponse(BaseModel):
+    id_order: int
+    purchase_order: str
+    creation_datetime: datetime
+    estimated_delivery: time | None
+    state: str
+    order_total: Decimal
+
+    # Datos del Cliente Expandidos
+    client_name: str
+    client_phone: str | None
+    client_address: str | None
+    neighborhood_name: str
+    zone_name: str
+
+    # Datos del Domiciliario (Si aplica)
+    driver_code: str | None
+    driver_name: str | None
+
+    # Lista de Productos
+    items: list[OrderDetailItemModal]
+
+    model_config = ConfigDict(from_attributes=True)

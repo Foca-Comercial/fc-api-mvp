@@ -18,6 +18,9 @@ class ClientCreate(ClientBase):
     pass
 
 
+# -----------------------------------------------------
+# Creacion de un nuevo cliente en la vista principal
+# -----------------------------------------------------
 class NewClientInput(BaseModel):
     name: str = Field(..., max_length=200)
     phone: str | None = Field(None, max_length=10)

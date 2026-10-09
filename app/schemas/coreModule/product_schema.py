@@ -38,6 +38,9 @@ class ProductResponse(ProductBase):
         )
 
 
+# -----------------------------------------------------
+# Catalogo de productos
+# -----------------------------------------------------
 class ProductCatalogItem(BaseModel):
     id_product: int
     code: str

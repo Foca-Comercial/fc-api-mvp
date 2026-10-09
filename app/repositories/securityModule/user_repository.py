@@ -23,6 +23,7 @@ class RepositoryUser(BaseRepository[User, UserCreate, UserUpdate]):
         )
         return list(db.scalars(stmt).all())
 
+    # Obtiene los roles de un usuario por su username
     def get_by_username_with_roles(self, db: Session, username: str) -> User | None:
         stmt = (
             select(User)
@@ -31,6 +32,7 @@ class RepositoryUser(BaseRepository[User, UserCreate, UserUpdate]):
         )
         return db.scalars(stmt).unique().first()
 
+    # Obtiene los roles de un usuario por su id
     def get_by_id_with_roles(self, db: Session, id_user: int) -> User | None:
         stmt = (
             select(User)

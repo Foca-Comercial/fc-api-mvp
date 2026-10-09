@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -15,15 +16,77 @@ from app.schemas.coreModule.order_schema import (
     OrderCreate,
     OrderCreateExistingClient,
     OrderCreateNewClient,
+    OrderDetailItemModal,
+    OrderFullDetailResponse,
     OrderItemInput,
+    OrderSummaryResponse,
     OrderUpdate,
 )
 from app.services.base_service import BaseService
+from app.utils.exceptions.business_exceptions import EntityNotFoundError
 
 
 class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
     def __init__(self):
         super().__init__(repository=order_repository, entity_name="Pedido")
+
+    def get_dashboard_summary(
+        self, db: Session, target_date: date
+    ) -> list[OrderSummaryResponse]:
+        rows = order_repository.get_daily_summary(db, target_date)
+
+        return [
+            OrderSummaryResponse(
+                id_order=row.id_order,  # type: ignore
+                purchase_order=row.purchase_order,  # type: ignore
+                creation_time=row.creation_time,  # type: ignore
+                client_name=row.client_name,  # type: ignore
+                zone_name=row.zone_name,  # type: ignore
+                product_codes=row.product_codes,  # type: ignore
+                total_quantity=row.total_quantity,  # type: ignore
+                driver_code=row.driver_code,  # type: ignore
+                driver_name=row.driver_name,  # type: ignore
+                state=row.state,  # type: ignore
+            )
+            for row in rows
+        ]
+
+    def get_full_detail(self, db: Session, id_order: int) -> OrderFullDetailResponse:
+        order = order_repository.get_order_with_full_relations(db, id_order)
+        if not order:
+            raise EntityNotFoundError("Pedido", id_order)
+
+        if order.user_vehicle:
+            person = order.user_vehicle.user_role.user.person
+            driver_name = f"{person.name} {person.last_name}"
+
+        items = [
+            OrderDetailItemModal(
+                product_code=detail.product.code,
+                product_name=detail.product.name,
+                cant=detail.cant,
+                unit_price=detail.unit_price,
+                subtotal=detail.subtotal,
+            )
+            for detail in order.order_details
+        ]
+
+        return OrderFullDetailResponse(
+            id_order=order.id_order,
+            purchase_order=order.purchase_order,
+            creation_datetime=order.creation_datetime,
+            estimated_delivery=order.estimated_delivery,
+            state=order.state,
+            order_total=order.order_total,  # type: ignore
+            client_name=order.client.name,
+            client_phone=order.client.phone,
+            client_address=order.client.address,
+            neighborhood_name=order.client.neighborhood.name,
+            zone_name=order.client.neighborhood.zone.name,
+            driver_code=order.user_vehicle.code,  # type: ignore
+            driver_name=driver_name,
+            items=items,
+        )
 
     # Creacion de pedido para un cliente nuevo
     def create_for_new_client(

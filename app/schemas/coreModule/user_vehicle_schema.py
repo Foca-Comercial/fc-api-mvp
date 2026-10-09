@@ -33,6 +33,9 @@ class UserVehicleResponse(UserVehicleBase):
         )
 
 
+# -----------------------------------------------------
+# Asignacion Conductor - Vehiculo
+# -----------------------------------------------------
 class DriverVehicleDropdownResponse(BaseModel):
     id_user_vehicle: int
     code: str

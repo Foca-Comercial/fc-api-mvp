@@ -23,6 +23,7 @@ def get_all_users_vehicles(
     return user_vehicle_service.get_all(db, skip=skip, limit=limit)
 
 
+# Listado de las asignaciones Conductor-Vehiculo ordenado por nombre conductor
 @router.get(
     "/dropdown",
     response_model=list[DriverVehicleDropdownResponse],

@@ -40,7 +40,7 @@ class RepositoryProduct(BaseRepository[Product, ProductCreate, ProductUpdate]):
             stmt = (
                 select(Product, null().label("agreed_price"))
                 .where(Product.active.is_(True))
-                .order_by(Product.name)
+                .order_by(Product.code)
             )
         return db.execute(stmt).all()
 

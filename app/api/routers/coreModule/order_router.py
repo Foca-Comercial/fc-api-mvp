@@ -1,4 +1,6 @@
-from fastapi import Depends, status
+from datetime import date
+
+from fastapi import Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser, get_current_user
@@ -7,7 +9,9 @@ from app.db.database import get_db
 from app.schemas.coreModule.order_schema import (
     OrderCreateExistingClient,
     OrderCreateNewClient,
+    OrderFullDetailResponse,
     OrderResponse,
+    OrderSummaryResponse,
     OrderUpdate,
     OrderWithDetailsResponse,
 )
@@ -19,6 +23,27 @@ router = SecuredRouter(prefix="/orders", tags=["Orders"])
 @router.get("/", response_model=list[OrderResponse])
 def get_all_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):  # noqa: B008
     return order_service.get_all(db, skip=skip, limit=limit)
+
+
+@router.get(
+    "/dashboard-summary",
+    response_model=list[OrderSummaryResponse],
+    roles=["GESTOR_COMERCIAL"],
+)
+def get_dashboard_summary(
+    target_date: date | None = Query(default_factory=date.today),  # type: ignore  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return order_service.get_dashboard_summary(db, target_date)  # type: ignore
+
+
+@router.get(
+    "/{id_order}/details",
+    response_model=OrderFullDetailResponse,
+    roles=["GESTOR_COMERCIAL"],
+)
+def get_order_full_detail(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
+    return order_service.get_full_detail(db, id_order)
 
 
 # Creacion de pedido para un cliente nuevo
