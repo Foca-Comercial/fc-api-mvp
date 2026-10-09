@@ -10,3 +10,4 @@ json5
 pyjwt
 python-multipart
 reportlab
+tzdata

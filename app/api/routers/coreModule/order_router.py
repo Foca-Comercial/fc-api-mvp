@@ -18,6 +18,7 @@ from app.schemas.coreModule.order_schema import (
 )
 from app.services.coreModule.order_service import order_service
 from app.services.pdf.pdf_service import pdf_service
+from app.utils.exceptions.business_exceptions import BusinessValidationError
 
 router = SecuredRouter(prefix="/orders", tags=["Orders"])
 
@@ -84,8 +85,16 @@ def create_order_existing_client(
 
 @router.post(
     "/{id_order}/dispatch",
+    response_model=OrderResponse,
+    roles=["GESTOR_COMERCIAL"],
+)
+def dispatch_order(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
+    return order_service.dispatch_order(db, id_order)
+
+
+@router.get(
+    "/{id_order}/receipt",
     response_class=Response,
-    # 1. Le decimos a Swagger explícitamente que espere un PDF
     responses={
         200: {
             "content": {"application/pdf": {}},
@@ -94,19 +103,21 @@ def create_order_existing_client(
     },
     roles=["GESTOR_COMERCIAL", "SUBADMINISTRADOR"],
 )
-def dispatch_order_and_print(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
-    """
-    Marca un pedido como despachado y retorna directamente el Comprobante de Despacho
-    en formato PDF (80mm) para impresión POS.
-    """
-    full_order = order_service.dispatch_order(db, id_order)
+def get_dispatch_receipt(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
+    order = order_service.get(db, id_order)  # chequeo liviano, sin joins pesados
+    if order.dispatch_time is None:
+        raise BusinessValidationError(
+            "El pedido aún no ha sido despachado; no hay comprobante para imprimir.",
+            field="dispatch_time",
+        )
+
+    full_order = order_service.get_full_detail(db, id_order)
     pdf_bytes = pdf_service.generate_dispatch_receipt(full_order)
 
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            # 2. Cambiamos 'inline' por 'attachment' para forzar la ventana de descarga
             "Content-Disposition": f"attachment; filename=CD_{full_order.purchase_order}.pdf"
         },
     )

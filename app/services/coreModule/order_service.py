@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.core.timezone import BOGOTA_TZ
 from app.models.coreModule.order import Order
 from app.repositories.coreModule.client_repository import client_repository
 from app.repositories.coreModule.order_detail_repository import order_detail_repository
@@ -181,22 +182,23 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         db.refresh(order)
         return order
 
-    def dispatch_order(self, db: Session, id_order: int) -> OrderFullDetailResponse:
+    def dispatch_order(self, db: Session, id_order: int) -> Order:
         order = self.get(db, id_order)
 
-        # Validar que no esté ya despachado o cancelado
-        if order.state == OrderState.DISPATCHED:
-            raise BusinessValidationError("El pedido ya fue despachado.", field="state")
+        if order.state != OrderState.PENDING:
+            raise BusinessValidationError(
+                f"Solo se pueden despachar pedidos en estado 'PENDING'. "
+                f"Estado actual: '{order.state.value}'.",
+                field="state",
+            )
 
-        # 1. Actualizar estado y registrar hora
         order.state = OrderState.DISPATCHED
-        order.dispatch_time = datetime.now().time()  # noqa: DTZ005
+        order.dispatch_time = datetime.now(BOGOTA_TZ).time()
 
         db.add(order)
         db.commit()
-
-        # 2. Retornar el detalle completo (esto ya incluye los items y totales)
-        return self.get_full_detail(db, id_order)
+        db.refresh(order)
+        return order
 
     def _validate_items(self, db: Session, items: list[OrderItemInput]) -> None:
         for item in items:
