@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import Depends, Query, status
+from fastapi import Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser, get_current_user
@@ -17,6 +17,7 @@ from app.schemas.coreModule.order_schema import (
     OrderWithDetailsResponse,
 )
 from app.services.coreModule.order_service import order_service
+from app.services.pdf.pdf_service import pdf_service
 
 router = SecuredRouter(prefix="/orders", tags=["Orders"])
 
@@ -78,6 +79,36 @@ def create_order_existing_client(
 ):
     return order_service.create_for_existing_client(
         db, obj_in=order_in, id_user_taker=current.user.id_user
+    )
+
+
+@router.post(
+    "/{id_order}/dispatch",
+    response_class=Response,
+    # 1. Le decimos a Swagger explícitamente que espere un PDF
+    responses={
+        200: {
+            "content": {"application/pdf": {}},
+            "description": "Devuelve el Comprobante de Despacho en formato PDF.",
+        }
+    },
+    roles=["GESTOR_COMERCIAL", "SUBADMINISTRADOR"],
+)
+def dispatch_order_and_print(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
+    """
+    Marca un pedido como despachado y retorna directamente el Comprobante de Despacho
+    en formato PDF (80mm) para impresión POS.
+    """
+    full_order = order_service.dispatch_order(db, id_order)
+    pdf_bytes = pdf_service.generate_dispatch_receipt(full_order)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            # 2. Cambiamos 'inline' por 'attachment' para forzar la ventana de descarga
+            "Content-Disposition": f"attachment; filename=CD_{full_order.purchase_order}.pdf"
+        },
     )
 
 

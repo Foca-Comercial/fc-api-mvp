@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -91,6 +91,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             purchase_order=order.purchase_order,
             creation_datetime=order.creation_datetime,
             estimated_delivery=order.estimated_delivery,
+            dispatch_time=order.dispatch_time,
             state=order.state,
             order_total=order.order_total,  # type: ignore
             client_name=order.client.name,
@@ -179,6 +180,23 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         db.commit()
         db.refresh(order)
         return order
+
+    def dispatch_order(self, db: Session, id_order: int) -> OrderFullDetailResponse:
+        order = self.get(db, id_order)
+
+        # Validar que no esté ya despachado o cancelado
+        if order.state == OrderState.DISPATCHED:
+            raise BusinessValidationError("El pedido ya fue despachado.", field="state")
+
+        # 1. Actualizar estado y registrar hora
+        order.state = OrderState.DISPATCHED
+        order.dispatch_time = datetime.now().time()  # noqa: DTZ005
+
+        db.add(order)
+        db.commit()
+
+        # 2. Retornar el detalle completo (esto ya incluye los items y totales)
+        return self.get_full_detail(db, id_order)
 
     def _validate_items(self, db: Session, items: list[OrderItemInput]) -> None:
         for item in items:

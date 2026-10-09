@@ -130,6 +130,7 @@ class OrderFullDetailResponse(BaseModel):
     purchase_order: str
     creation_datetime: datetime
     estimated_delivery: time | None
+    dispatch_time: time | None
     state: str
     order_total: Decimal
 
