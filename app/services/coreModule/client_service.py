@@ -14,6 +14,7 @@ class ClientService(BaseService[Client, ClientCreate, ClientUpdate]):
         # Inyectamos el repositorio instanciado y el nombre para el error 404
         super().__init__(repository=client_repository, entity_name="Cliente")
 
+    # Buscar cliente por su nombre
     def search_by_name(self, db: Session, *, name: str) -> list[Client]:
         return self.repository.search_by_name(db, name=name)
 

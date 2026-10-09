@@ -23,6 +23,7 @@ class RepositoryProduct(BaseRepository[Product, ProductCreate, ProductUpdate]):
         )
         return list(db.scalars(stmt).all())
 
+    # Obtener listado de productos con sus precios (id_client para precios especiales)
     def get_catalog(self, db: Session, *, id_client: int | None = None):
         if id_client is not None:
             stmt = (

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.utils.helpers.schema_helper import partial_model
 
@@ -31,3 +31,12 @@ class UserVehicleResponse(UserVehicleBase):
         from_attributes = (
             True  # Permite mapear directamente el objeto de SQLAlchemy al DTO
         )
+
+
+class DriverVehicleDropdownResponse(BaseModel):
+    id_user_vehicle: int
+    code: str
+    driver_name: str
+    vehicle_name: str
+
+    model_config = ConfigDict(from_attributes=True)

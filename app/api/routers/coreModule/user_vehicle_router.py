@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.coreModule.user_vehicle_schema import (
+    DriverVehicleDropdownResponse,
     UserVehicleCreate,
     UserVehicleResponse,
     UserVehicleUpdate,
@@ -20,6 +21,15 @@ def get_all_users_vehicles(
     db: Session = Depends(get_db),  # noqa: B008
 ):
     return user_vehicle_service.get_all(db, skip=skip, limit=limit)
+
+
+@router.get(
+    "/dropdown",
+    response_model=list[DriverVehicleDropdownResponse],
+    roles=["GESTOR_COMERCIAL"],
+)
+def get_drivers_dropdown(db: Session = Depends(get_db)):  # noqa: B008
+    return user_vehicle_service.list_drivers_for_assignment(db)
 
 
 @router.get("/{user_vehicle_id}", response_model=UserVehicleResponse)

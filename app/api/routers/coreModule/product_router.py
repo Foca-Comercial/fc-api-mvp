@@ -20,6 +20,7 @@ def get_all_products(skip: int = 0, limit: int = 100, db: Session = Depends(get_
     return product_service.get_all(db, skip=skip, limit=limit)
 
 
+# Obtener listado de productos con sus precios (id_client para precios especiales)
 @router.get(
     "/catalog", response_model=list[ProductCatalogItem], roles=["GESTOR_COMERCIAL"]
 )

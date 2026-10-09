@@ -22,6 +22,7 @@ class RepositoryClient(BaseRepository[Client, ClientCreate, ClientUpdate]):
         )
         return list(db.scalars(stmt).all())
 
+    # Buscar cliente por su nombre
     def search_by_name(
         self, db: Session, *, name: str, limit: int = 10
     ) -> list[Client]:

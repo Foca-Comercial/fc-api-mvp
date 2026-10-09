@@ -21,6 +21,7 @@ def get_all_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db
     return order_service.get_all(db, skip=skip, limit=limit)
 
 
+# Creacion de pedido para un cliente nuevo
 @router.post(
     "/new-client",
     response_model=OrderWithDetailsResponse,
@@ -37,6 +38,7 @@ def create_order_new_client(
     )
 
 
+# Creacion de pedido para un cliente existente
 @router.post(
     "/existing-client",
     response_model=OrderWithDetailsResponse,

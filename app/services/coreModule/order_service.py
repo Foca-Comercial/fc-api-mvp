@@ -25,6 +25,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
     def __init__(self):
         super().__init__(repository=order_repository, entity_name="Pedido")
 
+    # Creacion de pedido para un cliente nuevo
     def create_for_new_client(
         self, db: Session, *, obj_in: OrderCreateNewClient, id_user_taker: int
     ) -> Order:
@@ -44,6 +45,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             db, id_client=client.id_client, id_user_taker=id_user_taker, order_in=obj_in
         )
 
+    # Creacion de pedido para un cliente existente
     def create_for_existing_client(
         self, db: Session, *, obj_in: OrderCreateExistingClient, id_user_taker: int
     ) -> Order:
@@ -55,6 +57,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             db, id_client=obj_in.id_client, id_user_taker=id_user_taker, order_in=obj_in
         )
 
+    # Creacion de pedido directa a OrderDetail
     def _create_order_with_items(
         self, db: Session, *, id_client, id_user_taker, order_in
     ) -> Order:

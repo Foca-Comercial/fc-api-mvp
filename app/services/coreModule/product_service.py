@@ -17,6 +17,7 @@ class ProductService(BaseService[Product, ProductCreate, ProductUpdate]):
         # Inyectamos el repositorio instanciado y el nombre para el error 404
         super().__init__(repository=product_repository, entity_name="Producto")
 
+    # Obtener listado de productos con sus precios (id_client para precios especiales)
     def get_catalog(
         self, db: Session, *, id_client: int | None = None
     ) -> list[ProductCatalogItem]:
