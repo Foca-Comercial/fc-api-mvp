@@ -14,6 +14,9 @@ class ClientService(BaseService[Client, ClientCreate, ClientUpdate]):
         # Inyectamos el repositorio instanciado y el nombre para el error 404
         super().__init__(repository=client_repository, entity_name="Cliente")
 
+    def search_by_name(self, db: Session, *, name: str) -> list[Client]:
+        return self.repository.search_by_name(db, name=name)
+
     def _validate_before_create(self, db: Session, obj_in: ClientCreate) -> None:
         self._ensure_reference(
             db,

@@ -19,6 +19,11 @@ def get_all_clients(skip: int = 0, limit: int = 100, db: Session = Depends(get_d
     return client_service.get_all(db, skip=skip, limit=limit)
 
 
+@router.get("/search", response_model=list[ClientResponse], roles=["GESTOR_COMERCIAL"])
+def search_clients(name: str = Query(..., min_length=2), db: Session = Depends(get_db)):  # noqa: B008
+    return client_service.search_by_name(db, name=name)
+
+
 @router.get("/{client_id}", response_model=ClientResponse)
 def get_client(client_id: int, db: Session = Depends(get_db)):  # noqa: B008
     return client_service.get(db, id=client_id)

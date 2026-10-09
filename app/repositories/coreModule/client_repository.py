@@ -22,6 +22,17 @@ class RepositoryClient(BaseRepository[Client, ClientCreate, ClientUpdate]):
         )
         return list(db.scalars(stmt).all())
 
+    def search_by_name(
+        self, db: Session, *, name: str, limit: int = 10
+    ) -> list[Client]:
+        stmt = (
+            select(Client)
+            .where(Client.name.ilike(f"%{name}%"), Client.active.is_(True))
+            .order_by(Client.name)
+            .limit(limit)
+        )
+        return list(db.scalars(stmt).all())
+
 
 # Intancia del repositorio inyectando el modelo ORM
 client_repository = RepositoryClient(Client)

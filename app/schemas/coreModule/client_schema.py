@@ -18,6 +18,13 @@ class ClientCreate(ClientBase):
     pass
 
 
+class NewClientInput(BaseModel):
+    name: str = Field(..., max_length=200)
+    phone: str | None = Field(None, max_length=10)
+    address: str | None = Field(None, max_length=200)
+    id_neighborhood: int = Field(..., description="Barrio del cliente")
+
+
 @partial_model
 class ClientUpdate(ClientBase):
     pass

@@ -52,6 +52,12 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         db.refresh(db_obj)
         return db_obj
 
+    def add(self, db: Session, *, obj_in_data: dict[str, Any]) -> ModelType:
+        db_obj = self.model(**obj_in_data)
+        db.add(db_obj)
+        db.flush()
+        return db_obj
+
     def update(
         self,
         db: Session,

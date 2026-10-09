@@ -79,7 +79,9 @@ class Order(Base):
         nullable=False,
         index=True,
     )
-    user_taker: Mapped["User"] = relationship("User", foreign_keys=[id_user_taker])
+    user_taker: Mapped["User"] = relationship(
+        "User", foreign_keys=[id_user_taker], back_populates="orders"
+    )
 
     # PNI
     order_details: Mapped[list["OrderDetail"]] = relationship(back_populates="order")

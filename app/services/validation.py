@@ -105,13 +105,10 @@ class ReferenceRule:
     repository: Any  # INSTANCIA del repositorio de la entidad referenciada
 
     def on_create(self, db: Session, repository: Any, obj_in: BaseModel) -> None:
-        ensure_reference(
-            db,
-            self.repository,
-            getattr(obj_in, self.field),
-            field=self.field,
-            label=self.label,
-        )
+        value = getattr(obj_in, self.field, None)
+        if value is None:  # campo opcional no enviado, nada que validar
+            return
+        ensure_reference(db, self.repository, value, field=self.field, label=self.label)
 
     def on_update(
         self, db: Session, repository: Any, obj_in: BaseModel, existing: Any

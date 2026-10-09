@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.coreModule.product_schema import (
+    ProductCatalogItem,
     ProductCreate,
     ProductResponse,
     ProductUpdate,
@@ -17,6 +18,13 @@ router = SecuredRouter(prefix="/products", tags=["Products"])
 @router.get("/", response_model=list[ProductResponse])
 def get_all_products(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):  # noqa: B008
     return product_service.get_all(db, skip=skip, limit=limit)
+
+
+@router.get(
+    "/catalog", response_model=list[ProductCatalogItem], roles=["GESTOR_COMERCIAL"]
+)
+def get_catalog(id_client: int | None = Query(None), db: Session = Depends(get_db)):  # noqa: B008
+    return product_service.get_catalog(db, id_client=id_client)
 
 
 @router.get("/{product_id}", response_model=ProductResponse)

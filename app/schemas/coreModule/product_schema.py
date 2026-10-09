@@ -36,3 +36,14 @@ class ProductResponse(ProductBase):
         from_attributes = (
             True  # Permite mapear directamente el objeto de SQLAlchemy al DTO
         )
+
+
+class ProductCatalogItem(BaseModel):
+    id_product: int
+    code: str
+    name: str
+    base_price: Decimal
+    agreed_price: Decimal | None = None
+    effective_price: Decimal = Field(
+        ..., description="agreed_price si existe, si no base_price"
+    )
