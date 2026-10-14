@@ -52,7 +52,10 @@ class OrderCreateExistingClient(OrderCreateBase):
     id_client: int
 
 
-class OrderUpdate(OrderBase):
+# PATCH acotado: el único campo editable de un pedido es el conductor asignado.
+# No hereda de OrderBase a propósito (purchase_order, order_total e id_client
+# no deben modificarse por esta vía; los items van por sync_items).
+class OrderUpdate(BaseModel):
     id_user_vehicle: int | None = Field(
         None, description="Vehículo a asignar (null para desasignar)"
     )

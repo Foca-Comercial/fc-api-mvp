@@ -70,7 +70,11 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         if not order:
             raise EntityNotFoundError("Pedido", id_order)
 
+        # El conductor es opcional: un pedido puede despacharse sin asignar
+        driver_code: str | None = None
+        driver_name: str | None = None
         if order.user_vehicle:
+            driver_code = order.user_vehicle.code
             person = order.user_vehicle.user_role.user.person
             driver_name = f"{person.name} {person.last_name}"
 
@@ -100,7 +104,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             client_address=order.client.address,
             neighborhood_name=order.client.neighborhood.name,
             zone_name=order.client.neighborhood.zone.name,
-            driver_code=order.user_vehicle.code,  # type: ignore
+            driver_code=driver_code,
             driver_name=driver_name,
             items=items,
         )
