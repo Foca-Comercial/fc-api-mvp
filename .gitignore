@@ -6,7 +6,7 @@ __pycache__/
 
 # Entornos virtuales
 venv/
-env/
+.env
 .venv/
 
 # Variables de entorno y secretos
