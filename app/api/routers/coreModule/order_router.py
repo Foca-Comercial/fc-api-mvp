@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import CurrentUser, get_current_user
 from app.api.routers.auth.secured_router import SecuredRouter
+from app.core.timezone import today_bogota
 from app.db.database import get_db
 from app.schemas.coreModule.order_schema import (
     OrderCreateExistingClient,
@@ -34,7 +35,7 @@ def get_all_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db
     roles=["GESTOR_COMERCIAL"],
 )
 def get_dashboard_summary(
-    target_date: date | None = Query(default_factory=date.today),  # type: ignore  # noqa: B008
+    target_date: date | None = Query(default_factory=today_bogota),  # type: ignore  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
     return order_service.get_dashboard_summary(db, target_date)  # type: ignore

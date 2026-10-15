@@ -3,6 +3,7 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.timezone import BOGOTA_TZ
 from app.models.coreModule.client import Client
 from app.models.coreModule.order import Order
 from app.models.coreModule.order_detail import OrderDetail
@@ -21,11 +22,14 @@ from app.utils.enums.order_state import OrderState
 class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
     # Obtiene todos los pedidos del dia
     def get_daily_summary(self, db: Session, target_date: date) -> list[tuple]:
+        # creation_datetime es TIMESTAMPTZ: se convierte a hora local de Bogotá
+        # antes de extraer fecha/hora, sin depender de la zona de la sesión.
+        created_local = func.timezone(BOGOTA_TZ.key, Order.creation_datetime)
         stmt = (
             select(
                 Order.id_order,
                 Order.purchase_order,
-                func.to_char(Order.creation_datetime, "HH24:MI").label("creation_time"),
+                func.to_char(created_local, "HH24:MI").label("creation_time"),
                 Client.name.label("client_name"),
                 Zone.name.label("zone_name"),
                 func.string_agg(Product.code, ", ").label("product_codes"),
@@ -49,7 +53,7 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .outerjoin(Person, User.id_person == Person.id_person)
             .where(
                 # 1. Filtrar solo los del día indicado (por defecto hoy)
-                func.date(Order.creation_datetime) == target_date,
+                func.date(created_local) == target_date,
                 # 2. Excluir los despachados para limpiar la tabla principal
                 Order.state != OrderState.DISPATCHED,
             )

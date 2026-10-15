@@ -9,6 +9,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader, simpleSplit
 from reportlab.pdfgen import canvas
 
+from app.core.timezone import BOGOTA_TZ
 from app.schemas.coreModule.order_schema import OrderFullDetailResponse
 
 # ---------------------------------------------------------------------------
@@ -180,7 +181,8 @@ class PdfService:
 
     def _info_block(self, c, y, order):
         p = self.palette
-        created: datetime = order.creation_datetime
+        # La BD entrega el instante en UTC; se muestra en hora de Bogotá
+        created: datetime = order.creation_datetime.astimezone(BOGOTA_TZ)
         dispatch = (
             order.dispatch_time.strftime("%H:%M:%S") if order.dispatch_time else "—"
         )
@@ -335,7 +337,7 @@ class PdfService:
             y -= 2.9 * mm
         y -= 1.2 * mm
         c.setFont("Helvetica-Oblique", 6)
-        c.drawCentredString(CENTER, y, f"Impreso: {datetime.now():%Y-%m-%d %H:%M:%S}")  # noqa: DTZ005
+        c.drawCentredString(CENTER, y, f"Impreso: {datetime.now(BOGOTA_TZ):%Y-%m-%d %H:%M:%S}")
         return y
 
     # ----------------------------------------------------------- adornos
