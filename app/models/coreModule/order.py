@@ -38,6 +38,8 @@ class Order(Base):
         Index("idx_sale_order_state", "state"),
         Index("idx_sale_order_user_taker", "id_user_taker"),
         Index("idx_sale_order_route", "id_route"),
+        # Filtros por día/mes (dashboard, rutas del día, histórico, archivado)
+        Index("idx_sale_order_creation_datetime", "creation_datetime"),
     )
 
     id_order: Mapped[int] = mapped_column(

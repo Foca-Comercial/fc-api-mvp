@@ -17,6 +17,7 @@ from app.models.securityModule.person import Person
 from app.models.securityModule.user import User
 from app.models.securityModule.user_role import UserRole
 from app.repositories.base_repository import BaseRepository
+from app.repositories.time_filters import on_bogota_day, on_db_today
 from app.schemas.coreModule.order_schema import OrderCreate, OrderUpdate
 from app.utils.enums.order_state import OrderState
 
@@ -43,12 +44,10 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
     # Pedidos de HOY (día de Bogotá según la BD) generados desde la ruta, sin
     # cancelados: {id_client: id_order}. Evita generar dos veces la misma ruta.
     def get_route_orders_today(self, db: Session, id_route: int) -> dict[int, int]:
-        today = cast(func.timezone(BOGOTA_TZ.key, func.now()), Date)
-        created_local = func.timezone(BOGOTA_TZ.key, Order.creation_datetime)
         stmt = select(Order.id_client, Order.id_order).where(
             Order.id_route == id_route,
             Order.state != OrderState.CANCELLED,
-            func.date(created_local) == today,
+            on_db_today(Order.creation_datetime),
         )
         return {row.id_client: row.id_order for row in db.execute(stmt).all()}
 
@@ -98,7 +97,7 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .outerjoin(Person, User.id_person == Person.id_person)
             .where(
                 # 1. Filtrar solo los del día indicado (por defecto hoy)
-                func.date(created_local) == target_date,
+                on_bogota_day(Order.creation_datetime, target_date),
                 # 2. Solo los estados que corresponden a la vista
                 Order.state.in_(states),
             )

@@ -1,16 +1,16 @@
 from sqlalchemy import and_, exists, func, select
 from sqlalchemy.orm import Session
 
-from app.core.timezone import BOGOTA_TZ
 from app.models.coreModule.client import Client
 from app.models.coreModule.client_route import ClientRoute
 from app.models.coreModule.order import Order
 from app.models.parametersModule.neighborhood import Neighborhood
 from app.models.parametersModule.route import Route
 from app.models.parametersModule.zone import Zone
-from app.utils.enums.order_state import OrderState
 from app.repositories.base_repository import BaseRepository
+from app.repositories.time_filters import on_bogota_day
 from app.schemas.parametersModule.route_schema import RouteCreate, RouteUpdate
+from app.utils.enums.order_state import OrderState
 
 
 class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
@@ -37,7 +37,9 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
             .outerjoin(ClientRoute, ClientRoute.id_route == Route.id_route)
             .outerjoin(
                 Client,
-                and_(Client.id_client == ClientRoute.id_client, Client.active.is_(True)),
+                and_(
+                    Client.id_client == ClientRoute.id_client, Client.active.is_(True)
+                ),
             )
             .group_by(Route.id_route)
             .order_by(Route.name)
@@ -136,14 +138,13 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
             .correlate(Route)
             .scalar_subquery()
         )
-        created_local = func.timezone(BOGOTA_TZ.key, Order.creation_datetime)
         orders_count = (
             select(func.count())
             .select_from(Order)
             .where(
                 Order.id_route == Route.id_route,
                 Order.state != OrderState.CANCELLED,
-                func.date(created_local) == orders_date,
+                on_bogota_day(Order.creation_datetime, orders_date),
             )
             .correlate(Route)
             .scalar_subquery()
@@ -154,7 +155,7 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
                 clients_count.label("clients_count"),
                 orders_count.label("orders_count"),
             )
-            .where(Route.active.is_(True), Route.days_week.any(weekday))
+            .where(Route.active.is_(True), Route.days_week.any(weekday))  # type: ignore
             .order_by(Route.departure_time, Route.name)
         )
         return list(db.execute(stmt).all())
