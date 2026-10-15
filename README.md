@@ -44,6 +44,27 @@ Ejecutar API
 uvicorn app.main:app --reload
 ```
 
+## Pruebas
+
+Requieren una base de datos PostgreSQL **aparte**, vacía, cuyo nombre contenga `test`
+(por ejemplo `fc_db_test`). La suite le aplica las migraciones sola y deja cada test en
+una transacción que se revierte, así que no hace falta cargarle seeds.
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+PowerShell:
+```powershell
+$env:TEST_DATABASE_URL="postgresql+psycopg2://usuario:clave@localhost:5432/fc_db_test"
+pytest
+```
+
+Bash:
+```bash
+TEST_DATABASE_URL="postgresql+psycopg2://usuario:clave@localhost:5432/fc_db_test" pytest
+```
+
 ## Comandos Extras
 
 Crear migración (revisar el archivo generado antes de aplicarlo)

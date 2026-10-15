@@ -89,6 +89,13 @@ app/
         └── string_helper.py          # comparison_key (normalización para unicidad)
 docs/
 └── ARQUITECTURA.md                   # Este documento
+tests/                                # pytest (ver sección 11)
+├── conftest.py                       # BD de pruebas, migraciones, datos base, overrides
+├── helpers.py                        # API, item()
+└── test_order_*.py
+requirements.txt                      # Dependencias de la API (versiones fijadas)
+requirements-dev.txt                  # + pytest, httpx
+pytest.ini
 ```
 
 **Convención de organización:** cada capa (`models`, `schemas`, `repositories`, `services`,
@@ -223,7 +230,7 @@ def delete_person(id: int, strategy: DeletionType = Query(DeletionType.SOFT), ..
 ```
 
 **`Order` no tiene `DELETE`:** no tiene columna `active`, y un pedido no se borra — se
-cancela (transición a `CANCELLED`, pendiente; ver sección 11).
+cancela (transición a `CANCELLED`, pendiente; ver sección 12).
 
 ---
 
@@ -751,7 +758,30 @@ bloquea primero el pedido.
 
 ---
 
-## 11. Pendientes / Roadmap
+## 11. Pruebas automatizadas
+
+`pytest` + `TestClient` de FastAPI contra una **BD PostgreSQL de pruebas** (no SQLite: el
+código usa `func.timezone`, `string_agg`, `to_char` y `FOR UPDATE`, propios de Postgres).
+Cómo ejecutarlas: ver `README.md`.
+
+- **`tests/conftest.py`**: exige `TEST_DATABASE_URL` (y que el nombre de la BD contenga
+  `test`), la inyecta como `DATABASE_URL` antes de importar `app`, aplica
+  `alembic upgrade head` al iniciar la suite y crea los datos base de cada test.
+- **Aislamiento:** cada test abre una transacción externa y usa una `Session` con
+  `join_transaction_mode="create_savepoint"`; los `commit()` de los services solo liberan
+  un SAVEPOINT y todo se revierte al final del test. Los overrides de `get_db` replican el
+  `rollback()` ante error del `get_db` real.
+- **Autenticación:** `get_current_user` se reemplaza por un usuario `GESTOR_COMERCIAL`;
+  los flujos se prueban sin pasar por JWT.
+- **Cobertura inicial:** registro de pedidos (cliente nuevo/existente, totales, productos
+  repetidos o inexistentes), máquina de estados (dispatch/deliver), `PATCH` de conductor,
+  `sync_items`, detalle y PDF sin conductor, dashboards por estado, día y hora de Bogotá,
+  y endpoints retirados (`DELETE /orders`, escritura en `/orders_details`) — incluye la
+  regresión de cada bug corregido.
+
+---
+
+## 12. Pendientes / Roadmap
 
 - **Cierre de turno (`ShiftClosure`)**: hoy existen el modelo, schema, repositorio, servicio
   y router con **CRUD genérico** (solo `ADMINISTRADOR`). Falta el endpoint de acción que
@@ -771,7 +801,7 @@ bloquea primero el pedido.
 
 ---
 
-## 12. Estándares para nuevas funcionalidades
+## 13. Estándares para nuevas funcionalidades
 
 1. Un archivo por entidad en `models/`, `schemas/`, `repositories/`, `services/`,
    `api/routers/`, agrupado por el mismo módulo de dominio
@@ -809,3 +839,5 @@ bloquea primero el pedido.
     siempre declaradas antes que rutas con parámetro de posición equivalente (`/{id}`) en el mismo archivo de router
     — el *routing* de FastAPI/Starlette evalúa en orden y se queda con la primera
     coincidencia.
+13. Todo flujo nuevo o bug corregido llega con su test en `tests/` (los bugs, como
+    regresión que reproduce el caso que fallaba).
