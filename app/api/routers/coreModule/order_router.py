@@ -7,6 +7,7 @@ from app.api.dependencies import CurrentUser, get_current_user
 from app.api.routers.auth.secured_router import SecuredRouter
 from app.core.timezone import today_bogota
 from app.db.database import get_db
+from app.schemas.coreModule.order_history_schema import OrderHistoryPage
 from app.schemas.coreModule.order_schema import (
     OrderCreateExistingClient,
     OrderCreateNewClient,
@@ -25,6 +26,7 @@ from app.schemas.coreModule.route_order_schema import (
 )
 from app.services.coreModule.order_service import order_service
 from app.services.pdf.pdf_service import pdf_service
+from app.utils.enums.order_state import OrderState
 from app.utils.exceptions.business_exceptions import BusinessValidationError
 
 router = SecuredRouter(prefix="/orders", tags=["Orders"])
@@ -57,6 +59,40 @@ def get_dispatched_summary(
     db: Session = Depends(get_db),  # noqa: B008
 ):
     return order_service.get_dispatched_summary(db, target_date)  # type: ignore
+
+
+# -----------------------------------------------------
+# Vista Histórico (literal: antes de /{order_id})
+# -----------------------------------------------------
+@router.get(
+    "/history",
+    response_model=OrderHistoryPage,
+    roles=["GESTOR_COMERCIAL"],
+)
+def get_order_history(
+    date_from: date | None = Query(None, description="Por defecto: 1 del mes anterior"),  # noqa: B008
+    date_to: date | None = Query(None, description="Por defecto: hoy (Bogotá)"),  # noqa: B008
+    state: OrderState | None = None,
+    id_route: int | None = Query(None, gt=0),
+    id_user_vehicle: int | None = Query(None, gt=0),
+    search: str | None = Query(
+        None, min_length=1, description="Nombre del cliente o N.° de pedido exacto"
+    ),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return order_service.get_history(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        state=state,
+        id_route=id_route,
+        id_user_vehicle=id_user_vehicle,
+        search=search,
+        page=page,
+        page_size=page_size,
+    )
 
 
 # -----------------------------------------------------

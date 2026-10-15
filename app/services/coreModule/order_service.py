@@ -1,9 +1,9 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.core.timezone import BOGOTA_TZ
+from app.core.timezone import BOGOTA_TZ, today_bogota
 from app.models.coreModule.order import Order
 from app.repositories.coreModule.client_repository import client_repository
 from app.repositories.coreModule.order_detail_repository import order_detail_repository
@@ -17,6 +17,11 @@ from app.repositories.parametersModule.neighborhood_repository import (
     neighborhood_repository,
 )
 from app.repositories.parametersModule.route_repository import route_repository
+from app.schemas.coreModule.order_history_schema import (
+    OrderHistoryFilters,
+    OrderHistoryPage,
+    OrderHistoryRow,
+)
 from app.schemas.coreModule.order_schema import (
     OrderCreate,
     OrderCreateExistingClient,
@@ -90,6 +95,59 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             )
             for row in rows
         ]
+
+    # ------------------------------------------------------------------
+    # Vista Histórico
+    # ------------------------------------------------------------------
+    def get_history(
+        self,
+        db: Session,
+        *,
+        date_from: date | None,
+        date_to: date | None,
+        state: OrderState | None,
+        id_route: int | None,
+        id_user_vehicle: int | None,
+        search: str | None,
+        page: int,
+        page_size: int,
+    ) -> OrderHistoryPage:
+        today = today_bogota()
+        # Por defecto: desde el 1 del mes anterior (lo que retiene la BD) hasta hoy
+        first_of_month = today.replace(day=1)
+        default_from = (first_of_month - timedelta(days=1)).replace(day=1)
+        filters = OrderHistoryFilters(
+            date_from=date_from or default_from,
+            date_to=date_to or today,
+            state=state,
+            id_route=id_route,
+            id_user_vehicle=id_user_vehicle,
+            search=search.strip() if search and search.strip() else None,
+        )
+        if filters.date_from > filters.date_to:
+            raise BusinessValidationError(
+                "La fecha inicial no puede ser posterior a la final.",
+                field="date_from",
+                code="INVALID_DATE_RANGE",
+            )
+
+        total, total_sales = order_repository.get_history_totals(db, filters)
+        rows = order_repository.get_history_page(
+            db, filters, offset=(page - 1) * page_size, limit=page_size
+        )
+        return OrderHistoryPage(
+            date_from=filters.date_from,
+            date_to=filters.date_to,
+            page=page,
+            page_size=page_size,
+            total=total,
+            pages=-(-total // page_size),  # división hacia arriba
+            total_sales=total_sales,
+            items=[
+                OrderHistoryRow.model_validate(row, from_attributes=True)
+                for row in rows
+            ],
+        )
 
     # Obtiene los detalles de un pedido
     def get_full_detail(self, db: Session, id_order: int) -> OrderFullDetailResponse:
