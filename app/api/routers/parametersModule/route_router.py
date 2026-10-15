@@ -14,7 +14,7 @@ from app.utils.enums.delete_type import DeletionType
 router = SecuredRouter(prefix="/routes", tags=["Routes"])
 
 
-@router.get("/", response_model=list[RouteResponse])
+@router.get("/", response_model=list[RouteResponse], roles=["GESTOR_COMERCIAL"])
 def get_all_routes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):  # noqa: B008
     return route_service.get_all(db, skip=skip, limit=limit)
 

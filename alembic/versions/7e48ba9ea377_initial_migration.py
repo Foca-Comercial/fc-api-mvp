@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 import app.db.custom_types
 from alembic import op
-from app.models.parametersModule.route import DayWeek
+from app.utils.enums.day_week import DayWeek
 
 # revision identifiers, used by Alembic.
 revision: str = "7e48ba9ea377"

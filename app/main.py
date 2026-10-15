@@ -29,6 +29,7 @@ app = FastAPI(
     title="FC API MVP",
     description="API para gestión comercial - Foca Comercial",
     version="0.1.0",
+    swagger_ui_parameters={"docExpansion": "none"},
 )
 
 # Registro de Routers

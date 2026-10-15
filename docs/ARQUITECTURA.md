@@ -80,7 +80,7 @@ app/
     ├── exceptions/
     │   └── business_exceptions.py    # Jerarquía BusinessError
     ├── enums/                        # Enums centralizados (los modelos solo los importan)
-    │   ├── day_week.py               # DayWeek (numérico, ver IntEnumType)
+    │   ├── day_week.py               # DayWeek (1 = lunes ... 7 = domingo)
     │   ├── delete_type.py            # DeletionType (SOFT/HARD)
     │   └── order_state.py            # OrderState
     └── helpers/
@@ -348,7 +348,7 @@ agregar un valor requiere `ALTER TYPE ... ADD VALUE` con restricciones de transa
 migrar de vuelta a VARCHAR falló por incompatibilidad de operadores entre tipos — la
 corrección robusta fue columna temporal + copia de datos + drop del tipo huérfano.)*
 
-**B) Enum numérico** (ej. `DayWeek` en `Route`): `sqlalchemy.Enum` solo sabe guardar como
+**B) Enum numérico** (`IntEnumType`): `sqlalchemy.Enum` solo sabe guardar como
 texto, así que se creó un `TypeDecorator` propio en `app/db/custom_types.py`:
 ```python
 class IntEnumType(TypeDecorator):
@@ -360,6 +360,16 @@ class IntEnumType(TypeDecorator):
 ```
 La columna física sigue siendo `INTEGER` (con su `CheckConstraint` de rango como respaldo),
 pero el atributo Python devuelve directamente una instancia del enum, no un `int` suelto.
+Hoy ningún modelo lo usa (lo usaba `Route.day_week`), pero se conserva porque la migración
+inicial lo referencia.
+
+**C) Lista de valores de un enum numérico** (`Route.days_week`): una ruta sale varios días
+de la semana, así que se guarda como `SMALLINT[]` de PostgreSQL (`ARRAY(SmallInteger)`)
+con un `CHECK` que exige al menos un día y solo valores 1..7. En el schema el campo es
+`list[DayWeek]` (`min_length=1`), se normaliza sin repetidos y en orden (`[4, 1, 1]` →
+`[1, 4]`) y se serializa como enteros. Al editar se reemplaza la lista completa (SQLAlchemy
+no detecta mutaciones en sitio de un `ARRAY`). Para buscar las rutas de un día:
+`Route.days_week.any(dia)`.
 
 **Alembic y tipos personalizados:** cuando una columna usa un tipo con argumentos
 obligatorios (`IntEnumType(DayWeek)`), Alembic no genera automáticamente el argumento al

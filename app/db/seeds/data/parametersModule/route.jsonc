@@ -1,37 +1,37 @@
 [
     {
         "name": "NORTE MAÑANA",
-        "day_week": 1,
+        "days_week": [1, 4],
         "departure_time": "06:30:00",
         "active": true
     },
     {
         "name": "CENTRO MAÑANA",
-        "day_week": 2,
+        "days_week": [2],
         "departure_time": "07:00:00",
         "active": true
     },
     {
         "name": "SUR MAÑANA",
-        "day_week": 3,
+        "days_week": [3],
         "departure_time": "08:30:00",
         "active": true
     },
     {
         "name": "NORTE TARDE",
-        "day_week": 4,
+        "days_week": [4],
         "departure_time": "13:30:00",
         "active": true
     },
     {
         "name": "CENTRO TARDE",
-        "day_week": 5,
+        "days_week": [5],
         "departure_time": "15:00:00",
         "active": true
     },
     {
         "name": "SUR TARDE",
-        "day_week": 6,
+        "days_week": [6],
         "departure_time": "17:00:00",
         "active": true
     }
