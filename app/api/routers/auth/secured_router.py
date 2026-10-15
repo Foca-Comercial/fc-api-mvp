@@ -15,7 +15,7 @@ class SecuredRouter(APIRouter):
     al decorador, en vez de agregar `dependencies=[Depends(require_roles(...))]`
     a mano:
 
-        @router.post("/", roles=["SUBADMINISTRADOR"])
+        @router.post("/", roles=["ADMINSTRADOR"])
         def create_role(...): ...
     """
 

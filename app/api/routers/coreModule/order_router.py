@@ -168,7 +168,7 @@ def dispatch_order(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
             "description": "Devuelve el Comprobante de Despacho en formato PDF.",
         }
     },
-    roles=["GESTOR_COMERCIAL", "SUBADMINISTRADOR"],
+    roles=["GESTOR_COMERCIAL"],
 )
 def get_dispatch_receipt(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
     order = order_service.get(db, id_order)  # chequeo liviano, sin joins pesados

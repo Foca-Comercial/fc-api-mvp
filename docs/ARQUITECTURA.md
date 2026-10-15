@@ -158,13 +158,17 @@ heredando de estas bases:
 class RepositoryUser(BaseRepository[User, UserCreate, UserUpdate]):
     pass
 
+
 user_repository = RepositoryUser(User)
+
 
 # services/securityModule/user_service.py
 class UserService(BaseService[User, UserCreate, UserUpdate]):
     unique_rules = (UniqueRule("username", "Nombre de usuario", normalized=False),)
+
     def __init__(self):
         super().__init__(repository=user_repository, entity_name="Usuario")
+
 
 user_service = UserService()
 ```
@@ -257,6 +261,7 @@ Para evitar imports circulares entre entidades que se referencian mutuamente:
 if TYPE_CHECKING:
     from app.models.parametersModule.zone import Zone
 
+
 class Neighborhood(Base):
     zone: Mapped["Zone"] = relationship(back_populates="neighborhoods")
 ```
@@ -336,10 +341,17 @@ class OrderState(str, enum.Enum):
     DELIVERED = "DELIVERED"
     CANCELLED = "CANCELLED"
 
+
 state: Mapped[OrderState] = mapped_column(
-    SQLEnum(OrderState, name="chk_order_state", native_enum=False, length=20,
-            values_callable=lambda e: [x.value for x in e]),
-    nullable=False, default=OrderState.PENDING,
+    SQLEnum(
+        OrderState,
+        name="chk_order_state",
+        native_enum=False,
+        length=20,
+        values_callable=lambda e: [x.value for x in e],
+    ),
+    nullable=False,
+    default=OrderState.PENDING,
 )
 ```
 `native_enum=False` es la decisión clave: la columna física queda como `VARCHAR` + un
@@ -355,8 +367,9 @@ texto, así que se creó un `TypeDecorator` propio en `app/db/custom_types.py`:
 class IntEnumType(TypeDecorator):
     impl = Integer
     cache_ok = True
+
     def __init__(self, enum_class, *args, **kwargs): ...
-    def process_bind_param(self, value, dialect): ...   # Python -> BD: enum -> int
+    def process_bind_param(self, value, dialect): ...  # Python -> BD: enum -> int
     def process_result_value(self, value, dialect): ...  # BD -> Python: int -> enum
 ```
 La columna física sigue siendo `INTEGER` (con su `CheckConstraint` de rango como respaldo),
@@ -415,6 +428,7 @@ validación estricta al crear.
 
 ```python
 from app.utils.helpers.schema_helper import partial_model
+
 
 @partial_model
 class PersonUpdate(PersonBase):
@@ -482,9 +496,13 @@ siendo la garantía final.
   ```python
   def render_item(type_, obj, autogen_context):
       if type_ == "type" and isinstance(obj, IntEnumType):
-          autogen_context.imports.add(f"from {obj.enum_class.__module__} import {obj.enum_class.__name__}")
+          autogen_context.imports.add(
+              f"from {obj.enum_class.__module__} import {obj.enum_class.__name__}"
+          )
           return f"app.db.custom_types.IntEnumType({obj.enum_class.__name__})"
       return False
+
+
   # en run_migrations_online(): context.configure(..., render_item=render_item)
   ```
   Sin esto, Alembic genera `IntEnumType()` vacío (sin el argumento `enum_class` obligatorio),
@@ -547,7 +565,9 @@ hacer *lookup* — correcto para contraseñas, inútil aquí).
 Al hacer login, se consultan los roles del usuario (`UserRole` → `Role`) y se embeben en el
 payload del access token:
 ```python
-access_token = create_access_token(subject=user.id_user, roles=["GESTOR_COMERCIAL", ...])
+access_token = create_access_token(
+    subject=user.id_user, roles=["GESTOR_COMERCIAL", ...]
+)
 ```
 Trade-off aceptado: un cambio de rol solo se refleja en el próximo login, no en la sesión
 activa (mismo comportamiento que los claims de JWT en cualquier stack). La desactivación de
@@ -566,7 +586,7 @@ router = SecuredRouter(prefix="/roles", tags=["Roles"])
 @router.get("/")                              # sin roles= → requiere ADMINISTRADOR (por defecto)
 def get_all_roles(...): ...
 
-@router.post("/", roles=["SUBADMINISTRADOR"])  # ADMINISTRADOR o SUBADMINISTRADOR
+@router.post("/", roles=["ADMINISTRADOR, VENDEDOR"])  # ADMINISTRADOR, VENDEDOR
 def create_role(...): ...
 ```
 
@@ -677,7 +697,9 @@ negocio, así que solo existen los dos flujos especializados.
 calcula qué agregar/editar/eliminar comparando contra lo existente:
 ```python
 class OrderItemSync(BaseModel):
-    id_order_detail: int | None  # None = producto nuevo; con valor = edición de ese renglón
+    id_order_detail: (
+        int | None
+    )  # None = producto nuevo; con valor = edición de ese renglón
     id_product: int
     cant: int
     unit_price: Decimal
@@ -764,7 +786,7 @@ CANCELLED es estado terminal alcanzable desde los anteriores (gestión pendiente
 - **`POST /orders/{id}/dispatch`** (`GESTOR_COMERCIAL`): valida `state == PENDING`, cambia a
   `DISPATCHED`, registra `dispatch_time` (hora de Bogotá). No valida que haya conductor
   asignado — decisión de negocio explícita del cliente (empresa).
-- **`GET /orders/{id}/receipt`** (`GESTOR_COMERCIAL`, `SUBADMINISTRADOR`): genera el
+- **`GET /orders/{id}/receipt`** (`GESTOR_COMERCIAL`): genera el
   comprobante PDF de despacho (`PdfService.generate_dispatch_receipt`, formato tirilla 80mm
   con alto dinámico según cantidad de items). Separado del endpoint de despacho para permitir
   **reimpresión** sin reejecutar la transición de estado — si el pedido no tiene
