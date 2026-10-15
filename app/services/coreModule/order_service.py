@@ -9,10 +9,14 @@ from app.repositories.coreModule.client_repository import client_repository
 from app.repositories.coreModule.order_detail_repository import order_detail_repository
 from app.repositories.coreModule.order_repository import order_repository
 from app.repositories.coreModule.product_repository import product_repository
+from app.repositories.coreModule.special_customer_price_repository import (
+    special_customer_price_repository,
+)
 from app.repositories.coreModule.user_vehicle_repository import user_vehicle_repository
 from app.repositories.parametersModule.neighborhood_repository import (
     neighborhood_repository,
 )
+from app.repositories.parametersModule.route_repository import route_repository
 from app.schemas.coreModule.order_schema import (
     OrderCreate,
     OrderCreateExistingClient,
@@ -24,15 +28,24 @@ from app.schemas.coreModule.order_schema import (
     OrderSummaryResponse,
     OrderUpdate,
 )
+from app.schemas.coreModule.route_order_schema import (
+    RouteOfDayResponse,
+    RouteOrdersCreate,
+    RouteOrderTemplateResponse,
+    RouteTemplateClient,
+    RouteTemplatePrice,
+    RouteTemplateProduct,
+)
 from app.services.base_service import BaseService
 from app.services.validation import ReferenceRule
 from app.utils.enums.order_state import OrderState
 from app.utils.exceptions.business_exceptions import (
+    BusinessError,
     BusinessRuleViolationError,
     BusinessValidationError,
+    ConflictError,
     EntityNotFoundError,
 )
-
 
 # purchase_order es String(3): consecutivo diario de 001 a 999
 MAX_DAILY_ORDERS = 999
@@ -155,32 +168,61 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             db, id_client=obj_in.id_client, id_user_taker=id_user_taker, order_in=obj_in
         )
 
-    # Creacion de pedido directa a OrderDetail
+    # Creacion de pedido directa a OrderDetail (un pedido, con commit)
     def _create_order_with_items(
         self, db: Session, *, id_client, id_user_taker, order_in
     ) -> Order:
         if order_in.id_user_vehicle is not None:
-            self._ensure_reference(
-                db,
-                user_vehicle_repository,
-                order_in.id_user_vehicle,
-                field="id_user_vehicle",
-                label="Vehículo",
-            )
+            self._ensure_vehicle(db, order_in.id_user_vehicle)
 
+        order = self._add_order_with_items(
+            db,
+            id_client=id_client,
+            id_user_taker=id_user_taker,
+            items=order_in.items,
+            estimated_delivery=order_in.estimated_delivery,
+            id_user_vehicle=order_in.id_user_vehicle,
+        )
+        db.commit()
+        db.refresh(order)
+        return order
+
+    def _ensure_vehicle(self, db: Session, id_user_vehicle: int) -> None:
+        self._ensure_reference(
+            db,
+            user_vehicle_repository,
+            id_user_vehicle,
+            field="id_user_vehicle",
+            label="Vehículo",
+        )
+
+    # Inserta pedido + detalles SIN commit (flush): lo usan la creación
+    # individual y la creación en lote por ruta, que confirma todo al final.
+    def _add_order_with_items(
+        self,
+        db: Session,
+        *,
+        id_client: int,
+        id_user_taker: int,
+        items: list[OrderItemInput],
+        estimated_delivery=None,
+        id_user_vehicle: int | None = None,
+        id_route: int | None = None,
+    ) -> Order:
         order = order_repository.add(
             db,
             obj_in_data={
                 "purchase_order": self._next_purchase_order(db),
-                "estimated_delivery": order_in.estimated_delivery,
+                "estimated_delivery": estimated_delivery,
                 "id_client": id_client,
-                "id_user_vehicle": order_in.id_user_vehicle,
+                "id_user_vehicle": id_user_vehicle,
                 "id_user_taker": id_user_taker,
+                "id_route": id_route,
             },
         )
 
         total = Decimal(0)
-        for item in order_in.items:
+        for item in items:
             subtotal = item.unit_price * item.cant
             order_detail_repository.add(
                 db,
@@ -196,9 +238,168 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
 
         order.order_total = total
         db.add(order)
-        db.commit()
-        db.refresh(order)
+        db.flush()
         return order
+
+    # ------------------------------------------------------------------
+    # Pedidos por ruta
+    # ------------------------------------------------------------------
+
+    # Rutas activas que salen ese día de la semana
+    def get_routes_of_day(
+        self, db: Session, target_date: date
+    ) -> list[RouteOfDayResponse]:
+        rows = route_repository.get_routes_of_day(
+            db, target_date.isoweekday(), target_date
+        )
+        return [
+            RouteOfDayResponse(
+                id_route=route.id_route,
+                name=route.name,
+                departure_time=route.departure_time,
+                days_week=route.days_week,
+                clients_count=clients_count,
+                orders_count=orders_count,
+            )
+            for route, clients_count, orders_count in rows
+        ]
+
+    # Precarga: clientes de la ruta con el precio que aplica a cada producto
+    def get_route_template(
+        self, db: Session, id_route: int
+    ) -> RouteOrderTemplateResponse:
+        route = route_repository.get(db, id_route)
+        if route is None:
+            raise EntityNotFoundError("Ruta", id_route)
+
+        products = [p for p, _ in product_repository.get_catalog(db)]
+        clients = route_repository.get_orderable_clients(db, id_route)
+        specials = special_customer_price_repository.get_for_clients(
+            db,
+            [c.id_client for c in clients],  # type: ignore
+        )
+        existing = order_repository.get_route_orders_today(db, id_route)
+
+        return RouteOrderTemplateResponse(
+            id_route=route.id_route,
+            name=route.name,
+            departure_time=route.departure_time,
+            products=[
+                RouteTemplateProduct(
+                    id_product=p.id_product,
+                    code=p.code,
+                    name=p.name,
+                    base_price=p.base_price,
+                )
+                for p in products
+            ],
+            clients=[
+                RouteTemplateClient(
+                    id_client=c.id_client,  # type: ignore
+                    name=c.name,  # type: ignore
+                    phone=c.phone,  # type: ignore
+                    address=c.address,  # type: ignore
+                    neighborhood_name=c.neighborhood_name,  # type: ignore
+                    zone_name=c.zone_name,  # type: ignore
+                    prices=[
+                        RouteTemplatePrice(
+                            id_product=p.id_product,
+                            unit_price=specials.get(
+                                (c.id_client, p.id_product),  # type: ignore
+                                p.base_price,  # type: ignore
+                            ),  # type: ignore
+                            is_special=(c.id_client, p.id_product) in specials,  # type: ignore
+                        )
+                        for p in products
+                    ],
+                    existing_order_id=existing.get(c.id_client),  # type: ignore
+                )
+                for c in clients
+            ],
+        )
+
+    # Crea en UNA transacción los pedidos de los clientes de la ruta que vienen
+    # con productos. Si cualquiera falla, no se crea ninguno.
+    def create_for_route(
+        self,
+        db: Session,
+        *,
+        id_route: int,
+        obj_in: RouteOrdersCreate,
+        id_user_taker: int,
+    ) -> list[Order]:
+        # Bloquea la ruta: dos gestores generando la misma ruta a la vez no
+        # pueden duplicar pedidos (el segundo espera y ve los del primero).
+        route = route_repository.get_for_update(db, id_route)
+        if route is None:
+            raise EntityNotFoundError("Ruta", id_route)
+        if not route.active:
+            raise BusinessValidationError(
+                "La ruta está inactiva.", field="id_route", code="ROUTE_INACTIVE"
+            )
+
+        client_ids = [o.id_client for o in obj_in.orders]
+        repeated = sorted({i for i in client_ids if client_ids.count(i) > 1})
+        if repeated:
+            raise BusinessValidationError(
+                f"Cliente repetido en la lista (ID: {_ids(repeated)}).",
+                field="id_client",
+                code="DUPLICATE_CLIENT",
+            )
+
+        orderable = {
+            c.id_client  # type: ignore
+            for c in route_repository.get_orderable_clients(db, id_route)  # type: ignore
+        }
+        outside = [i for i in client_ids if i not in orderable]
+        if outside:
+            raise BusinessValidationError(
+                "Estos clientes no están asignados a la ruta o no están activos "
+                f"(ID: {_ids(outside)}).",
+                field="id_client",
+                code="CLIENT_NOT_IN_ROUTE",
+            )
+
+        existing = order_repository.get_route_orders_today(db, id_route)
+        already = [i for i in client_ids if i in existing]
+        if already:
+            raise ConflictError(
+                "Estos clientes ya tienen pedido de hoy desde esta ruta "
+                f"(ID: {_ids(already)}). Edítalo en lugar de crear otro.",
+                field="id_client",
+                code="ROUTE_ORDER_EXISTS",
+            )
+
+        if obj_in.id_user_vehicle is not None:
+            self._ensure_vehicle(db, obj_in.id_user_vehicle)
+
+        for client_order in obj_in.orders:
+            try:
+                self._validate_items(db, client_order.items)
+            except BusinessError as error:
+                # Indica a qué cliente pertenece el renglón con error
+                raise BusinessValidationError(
+                    f"Cliente {client_order.id_client}: {error.message}",
+                    field=error.field,
+                    code=error.code,
+                ) from error
+
+        orders = [
+            self._add_order_with_items(
+                db,
+                id_client=client_order.id_client,
+                id_user_taker=id_user_taker,
+                items=client_order.items,
+                estimated_delivery=obj_in.estimated_delivery,
+                id_user_vehicle=obj_in.id_user_vehicle,
+                id_route=id_route,
+            )
+            for client_order in obj_in.orders
+        ]
+        db.commit()
+        for order in orders:
+            db.refresh(order)
+        return orders
 
     # Consecutivo del día ("001", "002", ...). Lo asigna el servidor, nunca el
     # cliente; los pedidos de días anteriores conservan el número que recibieron.
@@ -208,7 +409,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             # La excepción revierte la transacción, incluido el incremento
             raise BusinessRuleViolationError(
                 f"Se alcanzó el máximo de {MAX_DAILY_ORDERS} pedidos del día.",
-                code="DAILY_ORDER_LIMIT",
+                rule_code="DAILY_ORDER_LIMIT",
             )
         return f"{number:03d}"
 
@@ -374,6 +575,10 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 f"'{existing.state.value}'.",
                 field="id_user_vehicle",
             )
+
+
+def _ids(values: list[int]) -> str:
+    return ", ".join(str(v) for v in values)
 
 
 order_service = OrderService()

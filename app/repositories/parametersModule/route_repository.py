@@ -1,11 +1,14 @@
 from sqlalchemy import and_, exists, func, select
 from sqlalchemy.orm import Session
 
+from app.core.timezone import BOGOTA_TZ
 from app.models.coreModule.client import Client
 from app.models.coreModule.client_route import ClientRoute
+from app.models.coreModule.order import Order
 from app.models.parametersModule.neighborhood import Neighborhood
 from app.models.parametersModule.route import Route
 from app.models.parametersModule.zone import Zone
+from app.utils.enums.order_state import OrderState
 from app.repositories.base_repository import BaseRepository
 from app.schemas.parametersModule.route_schema import RouteCreate, RouteUpdate
 
@@ -93,6 +96,67 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
         )
         if name:
             stmt = stmt.where(Client.name.ilike(f"%{name}%"))
+        return list(db.execute(stmt).all())
+
+    # Clientes a los que se les toma pedido desde la ruta: activos y registrados
+    def get_orderable_clients(self, db: Session, id_route: int) -> list[tuple]:
+        stmt = (
+            select(
+                Client.id_client,
+                Client.name,
+                Client.phone,
+                Client.address,
+                Neighborhood.name.label("neighborhood_name"),
+                Zone.name.label("zone_name"),
+            )
+            .join(ClientRoute, ClientRoute.id_client == Client.id_client)
+            .join(Neighborhood, Neighborhood.id_neighborhood == Client.id_neighborhood)
+            .join(Zone, Zone.id_zone == Neighborhood.id_zone)
+            .where(
+                ClientRoute.id_route == id_route,
+                Client.active.is_(True),
+                Client.is_registered.is_(True),
+            )
+            .order_by(Client.name)
+        )
+        return list(db.execute(stmt).all())
+
+    # Rutas activas que salen el día `weekday` (1 = lunes ... 7 = domingo), con
+    # sus clientes y los pedidos ya generados en `orders_date` (día de Bogotá).
+    def get_routes_of_day(self, db: Session, weekday: int, orders_date) -> list[tuple]:
+        clients_count = (
+            select(func.count())
+            .select_from(ClientRoute)
+            .join(Client, Client.id_client == ClientRoute.id_client)
+            .where(
+                ClientRoute.id_route == Route.id_route,
+                Client.active.is_(True),
+                Client.is_registered.is_(True),
+            )
+            .correlate(Route)
+            .scalar_subquery()
+        )
+        created_local = func.timezone(BOGOTA_TZ.key, Order.creation_datetime)
+        orders_count = (
+            select(func.count())
+            .select_from(Order)
+            .where(
+                Order.id_route == Route.id_route,
+                Order.state != OrderState.CANCELLED,
+                func.date(created_local) == orders_date,
+            )
+            .correlate(Route)
+            .scalar_subquery()
+        )
+        stmt = (
+            select(
+                Route,
+                clients_count.label("clients_count"),
+                orders_count.label("orders_count"),
+            )
+            .where(Route.active.is_(True), Route.days_week.any(weekday))
+            .order_by(Route.departure_time, Route.name)
+        )
         return list(db.execute(stmt).all())
 
 

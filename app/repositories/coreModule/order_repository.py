@@ -40,6 +40,18 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
         )
         return db.scalar(stmt)  # type: ignore
 
+    # Pedidos de HOY (día de Bogotá según la BD) generados desde la ruta, sin
+    # cancelados: {id_client: id_order}. Evita generar dos veces la misma ruta.
+    def get_route_orders_today(self, db: Session, id_route: int) -> dict[int, int]:
+        today = cast(func.timezone(BOGOTA_TZ.key, func.now()), Date)
+        created_local = func.timezone(BOGOTA_TZ.key, Order.creation_datetime)
+        stmt = select(Order.id_client, Order.id_order).where(
+            Order.id_route == id_route,
+            Order.state != OrderState.CANCELLED,
+            func.date(created_local) == today,
+        )
+        return {row.id_client: row.id_order for row in db.execute(stmt).all()}
+
     # Tabla principal: pedidos del día por gestionar (pendientes y cancelados)
     def get_daily_summary(self, db: Session, target_date: date) -> list[tuple]:
         return self._summary_by_states(

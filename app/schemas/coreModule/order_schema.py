@@ -81,6 +81,7 @@ class OrderItemsSyncRequest(BaseModel):
 class OrderResponse(OrderBase):
     id_order: int
     id_user_taker: int
+    id_route: int | None = None
     creation_datetime: datetime
     dispatch_time: time | None
     delivery_time: time | None

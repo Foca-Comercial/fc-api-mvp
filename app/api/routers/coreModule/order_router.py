@@ -17,6 +17,12 @@ from app.schemas.coreModule.order_schema import (
     OrderUpdate,
     OrderWithDetailsResponse,
 )
+from app.schemas.coreModule.route_order_schema import (
+    RouteOfDayResponse,
+    RouteOrdersCreate,
+    RouteOrdersCreatedResponse,
+    RouteOrderTemplateResponse,
+)
 from app.services.coreModule.order_service import order_service
 from app.services.pdf.pdf_service import pdf_service
 from app.utils.exceptions.business_exceptions import BusinessValidationError
@@ -51,6 +57,52 @@ def get_dispatched_summary(
     db: Session = Depends(get_db),  # noqa: B008
 ):
     return order_service.get_dispatched_summary(db, target_date)  # type: ignore
+
+
+# -----------------------------------------------------
+# Pedidos por ruta (literales: antes de /{order_id})
+# -----------------------------------------------------
+@router.get(
+    "/routes-of-day",
+    response_model=list[RouteOfDayResponse],
+    roles=["GESTOR_COMERCIAL"],
+)
+def get_routes_of_day(
+    target_date: date | None = Query(default_factory=today_bogota),  # type: ignore  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return order_service.get_routes_of_day(db, target_date)  # type: ignore
+
+
+@router.get(
+    "/routes/{id_route}/template",
+    response_model=RouteOrderTemplateResponse,
+    roles=["GESTOR_COMERCIAL"],
+)
+def get_route_order_template(id_route: int, db: Session = Depends(get_db)):  # noqa: B008
+    return order_service.get_route_template(db, id_route)
+
+
+@router.post(
+    "/routes/{id_route}",
+    response_model=RouteOrdersCreatedResponse,
+    status_code=status.HTTP_201_CREATED,
+    roles=["GESTOR_COMERCIAL"],
+)
+def create_route_orders(
+    id_route: int,
+    body: RouteOrdersCreate,
+    db: Session = Depends(get_db),  # noqa: B008
+    current: CurrentUser = Depends(get_current_user),  # noqa: B008
+):
+    orders = order_service.create_for_route(
+        db, id_route=id_route, obj_in=body, id_user_taker=current.user.id_user
+    )
+    return RouteOrdersCreatedResponse(
+        id_route=id_route,
+        created=len(orders),
+        orders=[OrderResponse.model_validate(o) for o in orders],
+    )
 
 
 @router.get(

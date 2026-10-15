@@ -9,6 +9,7 @@ from app.db.database import Base
 
 if TYPE_CHECKING:
     from app.models.coreModule.client_route import ClientRoute
+    from app.models.coreModule.order import Order
 
 
 class Route(Base):
@@ -33,3 +34,4 @@ class Route(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     client_routes: Mapped[list["ClientRoute"]] = relationship(back_populates="route")
+    orders: Mapped[list["Order"]] = relationship(back_populates="route")

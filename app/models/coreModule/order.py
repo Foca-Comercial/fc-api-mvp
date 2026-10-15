@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from app.models.coreModule.client import Client
     from app.models.coreModule.order_detail import OrderDetail
     from app.models.coreModule.user_vehicle import UserVehicle
+    from app.models.parametersModule.route import Route
     from app.models.securityModule.user import User
 
 
@@ -36,6 +37,7 @@ class Order(Base):
         Index("idx_sale_order_user_vehicle", "id_user_vehicle"),
         Index("idx_sale_order_state", "state"),
         Index("idx_sale_order_user_taker", "id_user_taker"),
+        Index("idx_sale_order_route", "id_route"),
     )
 
     id_order: Mapped[int] = mapped_column(
@@ -83,6 +85,14 @@ class Order(Base):
     user_taker: Mapped["User"] = relationship(
         "User", foreign_keys=[id_user_taker], back_populates="orders"
     )
+
+    # Ruta de la que se generó el pedido (None = pedido tomado individualmente)
+    id_route: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("route.id_route", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    route: Mapped["Route | None"] = relationship(back_populates="orders")
 
     # PNI
     order_details: Mapped[list["OrderDetail"]] = relationship(back_populates="order")
