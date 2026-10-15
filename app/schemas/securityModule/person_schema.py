@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.utils.helpers.schema_helper import partial_model
 from app.utils.schema_types import UpperText
@@ -25,7 +25,4 @@ class PersonUpdate(PersonBase):
 class PersonResponse(PersonBase):
     id_person: int
 
-    class Config:
-        from_attributes = (
-            True  # Permite mapear directamente el objeto de SQLAlchemy al DTO
-        )
+    model_config = ConfigDict(from_attributes=True)

@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.utils.helpers.schema_helper import partial_model
 
@@ -26,7 +26,4 @@ class SpecialCustomerPriceUpdate(SpecialCustomerPriceBase):
 class SpecialCustomerPriceResponse(SpecialCustomerPriceBase):
     id_client_price: int
 
-    class Config:
-        from_attributes = (
-            True  # Permite mapear directamente el objeto de SQLAlchemy al DTO
-        )
+    model_config = ConfigDict(from_attributes=True)

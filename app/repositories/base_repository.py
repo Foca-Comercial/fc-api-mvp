@@ -22,6 +22,8 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         self.model = model
         mapper = sa_inspect(model)
         self._primary_key_columns = list(mapper.primary_key)
+        # Nombres de atributo de las columnas mapeadas (no relaciones)
+        self._column_keys = frozenset(mapper.column_attrs.keys())
 
     def get_all(
         self, db: Session, *, skip: int = 0, limit: int = 100
@@ -82,19 +84,25 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         db_obj: ModelType,
         obj_in: UpdateSchemaType | dict[str, Any],
     ) -> ModelType:
-        # Extraer los datos actuales del objeto en BD
-        obj_data = db_obj.__dict__
-
-        # Si llega como DTO, excluir los campos no enviados (Oh, estas haciendo magia para PATCH. Continua)
+        # Si llega como DTO, solo los campos enviados (PATCH parcial)
         if isinstance(obj_in, dict):
             update_data = obj_in
         else:
             update_data = obj_in.model_dump(exclude_unset=True)
 
-        # Actualizar solo los campos que vinieron en el request
-        for field in obj_data:
-            if field in update_data:
-                setattr(db_obj, field, update_data[field])
+        # Se recorre lo ENVIADO, no db_obj.__dict__: tras un commit previo en la
+        # misma sesión el objeto queda expirado y __dict__ no trae sus columnas,
+        # lo que antes hacía ignorar campos en silencio.
+        unknown = set(update_data) - self._column_keys
+        if unknown:
+            # Error de programación (schema y modelo desalineados), no del cliente
+            raise ValueError(
+                f"{self.model.__name__}.update: campos que no son columnas: "
+                f"{sorted(unknown)}"
+            )
+
+        for field, value in update_data.items():
+            setattr(db_obj, field, value)
 
         db.add(db_obj)
         db.commit()

@@ -86,10 +86,7 @@ class OrderResponse(OrderBase):
     delivery_time: time | None
     state: OrderState
 
-    class Config:
-        from_attributes = (
-            True  # Permite mapear directamente el objeto de SQLAlchemy al DTO
-        )
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OrderWithDetailsResponse(OrderResponse):

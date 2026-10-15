@@ -92,7 +92,7 @@ docs/
 tests/                                # pytest (ver sección 11)
 ├── conftest.py                       # BD de pruebas, migraciones, datos base, overrides
 ├── helpers.py                        # API, item()
-└── test_order_*.py
+└── test_*.py
 requirements.txt                      # Dependencias de la API (versiones fijadas)
 requirements-dev.txt                  # + pytest, httpx
 pytest.ini
@@ -168,6 +168,12 @@ class UserService(BaseService[User, UserCreate, UserUpdate]):
 
 user_service = UserService()
 ```
+
+**`BaseRepository.update`** recibe un schema (`model_dump(exclude_unset=True)`, solo lo
+enviado) o un `dict`, y recorre **esos campos** — no `db_obj.__dict__`, que tras un commit
+previo en la misma sesión llega sin columnas porque el objeto está expirado. Cada campo se
+valida contra las columnas del mapper: uno que no sea columna lanza `ValueError` (error de
+programación: schema y modelo desalineados) en vez de ignorarse en silencio.
 
 Cuando una entidad necesita lógica más elaborada que el CRUD genérico (como `Order`), su
 servicio sigue heredando `BaseService` para conservar `get`/`get_all`/`update`, pero agrega
@@ -385,8 +391,9 @@ XxxBase (atributos compartidos) → XxxCreate → XxxUpdate → XxxResponse
   solo tiene `id_user_vehicle` (`null` para desasignar); los items se editan por
   `sync_items` y el resto de campos de `Order` no se tocan por esta vía.
 - **`XxxResponse`**: hereda de `Base`, agrega el/los identificador(es) y cualquier campo que
-  solo tenga sentido en la salida. Usa `from_attributes = True` para construirse
-  directamente desde una instancia ORM.
+  solo tenga sentido en la salida. Declara `model_config = ConfigDict(from_attributes=True)`
+  (sintaxis de Pydantic v2; la clase interna `class Config` está obsoleta) para
+  construirse directamente desde una instancia ORM.
 
 **Decisión explícita:** a diferencia de un enfoque con un solo DTO para crear y actualizar
 (donde la lógica de negocio decide qué hacer con el `Id`), aquí se usan schemas separados,
@@ -776,8 +783,9 @@ Cómo ejecutarlas: ver `README.md`.
 - **Cobertura inicial:** registro de pedidos (cliente nuevo/existente, totales, productos
   repetidos o inexistentes), máquina de estados (dispatch/deliver), `PATCH` de conductor,
   `sync_items`, detalle y PDF sin conductor, dashboards por estado, día y hora de Bogotá,
-  y endpoints retirados (`DELETE /orders`, escritura en `/orders_details`) — incluye la
-  regresión de cada bug corregido.
+  endpoints retirados (`DELETE /orders`, escritura en `/orders_details`) y
+  `BaseRepository.update` sobre objetos expirados — incluye la regresión de cada bug
+  corregido.
 
 ---
 
