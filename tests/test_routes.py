@@ -1,4 +1,4 @@
-"""Rutas: varios días por ruta (R1)."""
+"""Rutas: varios días por ruta (R1) y vista de Rutas (R2)."""
 
 from datetime import time
 
@@ -6,10 +6,13 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
+from app.models.coreModule.client import Client
+from app.models.coreModule.client_route import ClientRoute
 from app.models.parametersModule.route import Route
 from app.schemas.parametersModule.route_schema import RouteCreate, RouteUpdate
 from app.services.parametersModule.route_service import route_service
 from app.utils.enums.day_week import DayWeek
+from tests.helpers import API
 
 
 def _create_route(db, **overrides) -> Route:
@@ -49,3 +52,139 @@ def test_la_bd_rechaza_una_ruta_sin_dias(db):
     with pytest.raises(IntegrityError):
         db.flush()
     db.rollback()
+
+
+# --- Vista de Rutas (R2): API con rol GESTOR_COMERCIAL ---------------------------
+
+
+def _post_route(client, name="ruta norte", days=(1, 4), active=True) -> dict:
+    response = client.post(
+        f"{API}/routes/",
+        json={
+            "name": name,
+            "days_week": list(days),
+            "departure_time": "06:30",
+            "active": active,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _new_client(db, data, name, active=True) -> Client:
+    new = Client(
+        name=name, id_neighborhood=data.neighborhood.id_neighborhood, active=active
+    )
+    db.add(new)
+    db.commit()
+    return new
+
+
+def test_gestor_crea_y_edita_rutas(client):
+    route = _post_route(client, days=(4, 1))
+    assert route["days_week"] == [1, 4]
+    assert route["name"] == "RUTA NORTE"
+
+    response = client.patch(
+        f"{API}/routes/{route['id_route']}", json={"days_week": [2, 5]}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["days_week"] == [2, 5]
+
+
+def test_gestor_no_puede_eliminar_rutas(client):
+    route = _post_route(client)
+
+    response = client.delete(f"{API}/routes/{route['id_route']}")
+
+    assert response.status_code == 403
+
+
+def test_cards_cuentan_solo_clientes_activos(client, db, data):
+    norte = _post_route(client, name="ruta norte")
+    sur = _post_route(client, name="ruta sur", days=(3,))
+    inactive = _new_client(db, data, "CLIENTE INACTIVO", active=False)
+    client.post(
+        f"{API}/routes/{norte['id_route']}/clients",
+        json={"id_client": data.client.id_client},
+    )
+    # asignado directamente: la API no permite asignar clientes inactivos
+    db.add(ClientRoute(id_route=norte["id_route"], id_client=inactive.id_client))
+    db.commit()
+
+    cards = {c["id_route"]: c for c in client.get(f"{API}/routes/cards").json()}
+
+    assert cards[norte["id_route"]]["clients_count"] == 1
+    assert cards[sur["id_route"]]["clients_count"] == 0
+    assert cards[norte["id_route"]]["days_week"] == [1, 4]
+
+
+def test_cards_incluyen_rutas_inactivas_salvo_que_se_filtre(client):
+    active = _post_route(client, name="ruta activa")
+    inactive = _post_route(client, name="ruta inactiva", active=False)
+
+    all_ids = {c["id_route"] for c in client.get(f"{API}/routes/cards").json()}
+    active_ids = {
+        c["id_route"] for c in client.get(f"{API}/routes/cards?only_active=true").json()
+    }
+
+    assert {active["id_route"], inactive["id_route"]} <= all_ids
+    assert active["id_route"] in active_ids
+    assert inactive["id_route"] not in active_ids
+
+
+def test_asignar_listar_y_quitar_clientes(client, data):
+    route = _post_route(client)
+    url = f"{API}/routes/{route['id_route']}/clients"
+
+    assigned = client.post(url, json={"id_client": data.client.id_client})
+    assert assigned.status_code == 201, assigned.text
+    assert assigned.json()["neighborhood_name"] == "BARRIO TEST"
+    assert assigned.json()["zone_name"] == "ZONA TEST"
+
+    listed = client.get(url).json()
+    assert [c["id_client"] for c in listed] == [data.client.id_client]
+
+    removed = client.delete(f"{url}/{data.client.id_client}")
+    assert removed.status_code == 204
+    assert client.get(url).json() == []
+    assert client.delete(f"{url}/{data.client.id_client}").status_code == 404
+
+
+def test_no_se_asigna_dos_veces_el_mismo_cliente(client, data):
+    route = _post_route(client)
+    url = f"{API}/routes/{route['id_route']}/clients"
+    client.post(url, json={"id_client": data.client.id_client})
+
+    response = client.post(url, json={"id_client": data.client.id_client})
+
+    assert response.status_code == 409
+
+
+def test_no_se_asigna_un_cliente_inactivo(client, db, data):
+    route = _post_route(client)
+    inactive = _new_client(db, data, "CLIENTE INACTIVO", active=False)
+
+    response = client.post(
+        f"{API}/routes/{route['id_route']}/clients",
+        json={"id_client": inactive.id_client},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "REFERENCE_INACTIVE"
+
+
+def test_ruta_inactiva_sigue_gestionando_clientes(client, data):
+    route = _post_route(client, active=False)
+
+    response = client.post(
+        f"{API}/routes/{route['id_route']}/clients",
+        json={"id_client": data.client.id_client},
+    )
+
+    assert response.status_code == 201, response.text
+
+
+def test_clientes_de_ruta_inexistente(client):
+    assert client.get(f"{API}/routes/999999/clients").status_code == 404

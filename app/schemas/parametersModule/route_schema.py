@@ -43,3 +43,27 @@ class RouteResponse(RouteBase):
     id_route: int
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# -----------------------------------------------------
+# Vista de Rutas: cards y gestión de clientes
+# -----------------------------------------------------
+class RouteCardResponse(RouteResponse):
+    clients_count: int = Field(..., description="Clientes activos asignados a la ruta")
+
+
+class RouteClientAssign(BaseModel):
+    id_client: int = Field(..., gt=0, description="Cliente a asignar a la ruta")
+
+
+class RouteClientResponse(BaseModel):
+    id_client_route: int
+    id_client: int
+    name: str
+    phone: str | None
+    address: str | None
+    neighborhood_name: str
+    zone_name: str
+    active: bool = Field(..., description="Estado del cliente")
+
+    model_config = ConfigDict(from_attributes=True)

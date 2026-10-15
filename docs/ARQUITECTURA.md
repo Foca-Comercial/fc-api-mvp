@@ -180,9 +180,10 @@ servicio sigue heredando `BaseService` para conservar `get`/`get_all`/`update`, 
 métodos propios en vez de forzar la operación dentro de `create()`/`update()` genéricos
 (ver sección 10).
 
-**`get_all` y registros inactivos (decisión explícita):** solo `Client` y `Product`
-sobrescriben `get_all` para excluir los registros con `active = False`, porque son los que
-se listan en el flujo operativo (formulario de pedido). El resto de entidades devuelve
+**`get_all` y registros inactivos (decisión explícita):** solo `Client`, `Product` y
+`Route` sobrescriben `get_all` para excluir los registros con `active = False`, porque son
+los que se listan en el flujo operativo (formulario de pedido). Las cards de la vista de
+Rutas usan su propia consulta (`/routes/cards`), que sí incluye las inactivas. El resto de entidades devuelve
 también los inactivos **a propósito** — sus listados son de administración, donde ver lo
 desactivado es útil.
 
@@ -727,6 +728,26 @@ datos de un cliente existente en el flujo de registro de pedido.
   barrio, zona y conductor. `driver_code` / `driver_name` llegan en `null` si el pedido no
   tiene conductor asignado. Es la misma consulta que alimenta el PDF.
 
+### Vista de Rutas
+
+Roles: `GESTOR_COMERCIAL` (y `ADMINISTRADOR`). Desactivar/eliminar una ruta
+(`DELETE /routes/{id}`) sigue siendo solo de `ADMINISTRADOR`.
+
+- **`GET /routes/cards?only_active=false`**: una card por ruta con nombre, `days_week`,
+  hora de salida, estado y `clients_count` (clientes **activos** asignados). Incluye las
+  rutas inactivas salvo `only_active=true`.
+- **`POST /routes/`** y **`PATCH /routes/{id}`**: crear y editar (`days_week` como lista,
+  ver sección 4).
+- **`GET /routes/{id}/clients`**: clientes asignados, con teléfono, dirección, barrio, zona
+  y estado.
+- **`POST /routes/{id}/clients`** `{"id_client": ...}`: asigna un cliente (debe existir y
+  estar activo; 409 si ya está asignado). Se permite aunque la ruta esté inactiva.
+- **`DELETE /routes/{id}/clients/{id_client}`**: quita la asignación (borra la fila de
+  `client_route`; el cliente no se toca). 404 si no estaba asignado.
+
+El CRUD genérico `/client_routes` se mantiene solo para `ADMINISTRADOR`; la vista usa los
+endpoints anidados bajo `/routes/{id}/clients`.
+
 ### Ciclo de vida del pedido — máquina de estados
 
 ```
@@ -842,7 +863,10 @@ Cómo ejecutarlas: ver `README.md`.
    en **todos** los schemas de entrada que lo reciban.
 8. Antes de aplicar una migración autogenerada: revisarla siempre. Tipos personalizados
    requieren que `render_item` en `env.py` los conozca; cambios de tipo de columna pueden
-   requerir `postgresql_using` o el patrón columna-temporal.
+   requerir `postgresql_using` o el patrón columna-temporal. Las migraciones importan
+   enums y tipos desde `app/utils/enums` o `app/db/custom_types`, **nunca desde
+   `app/models`**: los modelos cambian y una migración vieja debe seguir cargando tal como
+   se escribió (Alembic carga todos los archivos de `versions/` en cada comando).
 9. Cualquier operación que toque más de una tabla en una sola unidad de negocio (como el
    registro de pedido) usa `repository.add()` (flush, no commit) en cada paso, con un único
    `db.commit()` al final del método de service — nunca el `create()`/`update()` genérico
