@@ -28,7 +28,11 @@ class RepositoryClient(BaseRepository[Client, ClientCreate, ClientUpdate]):
     ) -> list[Client]:
         stmt = (
             select(Client)
-            .where(Client.name.ilike(f"%{name}%"), Client.active.is_(True))
+            .where(
+                Client.name.ilike(f"%{name}%"),
+                Client.active.is_(True),
+                Client.is_registered.is_(True),
+            )
             .order_by(Client.name)
             .limit(limit)
         )

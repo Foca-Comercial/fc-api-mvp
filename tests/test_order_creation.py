@@ -77,3 +77,43 @@ def test_crear_pedido_con_producto_inexistente_no_crea_nada(client, data, db):
     assert response.status_code == 422
     assert response.json()["field"] == "id_product"
     assert _order_count(db) == before
+
+
+def test_busqueda_de_clientes_solo_devuelve_registrados(client, data, db):
+    """Formulario de cliente registrado: los temporales no aparecen (opción B)."""
+    temporary = Client(
+        name="CLIENTE REGISTRADO DE PASO",  # coincide con la búsqueda
+        id_neighborhood=data.neighborhood.id_neighborhood,
+        is_registered=False,
+    )
+    db.add(temporary)
+    db.commit()
+
+    response = client.get(f"{API}/clients/search?name=registrado")
+
+    assert response.status_code == 200, response.text
+    ids = {c["id_client"] for c in response.json()}
+    assert data.client.id_client in ids  # "CLIENTE REGISTRADO" (fixture)
+    assert temporary.id_client not in ids
+
+
+def test_pedido_de_cliente_existente_rechaza_temporales(client, data, db):
+    """El flujo de cliente registrado no acepta clientes temporales aunque se
+    envíe su id_client a mano."""
+    temporary = Client(
+        name="CLIENTE DE PASO",
+        id_neighborhood=data.neighborhood.id_neighborhood,
+        is_registered=False,
+    )
+    db.add(temporary)
+    db.commit()
+    before = _order_count(db)
+
+    response = client.post(
+        f"{API}/orders/existing-client",
+        json={"id_client": temporary.id_client, "items": [item(data.products[0], 1)]},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "CLIENT_NOT_REGISTERED"
+    assert _order_count(db) == before

@@ -5,6 +5,7 @@ from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.parametersModule.neighborhood_schema import (
     NeighborhoodCreate,
+    NeighborhoodDropdownResponse,
     NeighborhoodResponse,
     NeighborhoodUpdate,
 )
@@ -21,6 +22,17 @@ def get_all_neighborhoods(
     db: Session = Depends(get_db),  # noqa: B008
 ):
     return neighborhood_service.get_all(db, skip=skip, limit=limit)
+
+
+# Selector de barrio para el formulario de pedido de cliente nuevo.
+# Literal antes de /{neighborhood_id}.
+@router.get(
+    "/dropdown",
+    response_model=list[NeighborhoodDropdownResponse],
+    roles=["GESTOR_COMERCIAL"],
+)
+def get_neighborhoods_dropdown(db: Session = Depends(get_db)):  # noqa: B008
+    return neighborhood_service.get_dropdown(db)
 
 
 @router.get("/{neighborhood_id}", response_model=NeighborhoodResponse)

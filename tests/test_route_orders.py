@@ -309,3 +309,18 @@ def test_ruta_inactiva_no_genera_pedidos(client, route, data, db):
 
 def test_lista_vacia_se_rechaza(client, route):
     assert _batch(client, route.route.id_route, []).status_code == 422
+
+
+def test_ids_en_cero_se_rechazan_en_el_schema(client, route, data):
+    """Swagger rellena los ejemplos con 0: debe fallar con 422 de validación."""
+    response = _batch(
+        client,
+        route.route.id_route,
+        [{"id_client": 0, "items": [item(data.products[0], 1)]}],
+        id_user_vehicle=0,
+    )
+
+    assert response.status_code == 422
+    fields = {tuple(e["loc"][1:]) for e in response.json()["detail"]}
+    assert ("orders", 0, "id_client") in fields
+    assert ("id_user_vehicle",) in fields

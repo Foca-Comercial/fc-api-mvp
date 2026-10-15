@@ -24,3 +24,13 @@ class NeighborhoodResponse(NeighborhoodBase):
     id_neighborhood: int
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Selector de barrio (formulario de pedido para cliente nuevo)
+class NeighborhoodDropdownResponse(BaseModel):
+    id_neighborhood: int
+    name: str
+    id_zone: int
+    zone_name: str
+
+    model_config = ConfigDict(from_attributes=True)

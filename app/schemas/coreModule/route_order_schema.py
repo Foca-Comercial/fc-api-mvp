@@ -63,7 +63,7 @@ class RouteOrderTemplateResponse(BaseModel):
 # Creación en lote
 # -----------------------------------------------------
 class RouteOrderClientInput(BaseModel):
-    id_client: int
+    id_client: int = Field(..., gt=0, description="Cliente de la ruta (ver /template)")
     items: list[OrderItemInput] = Field(..., min_length=1)
 
 
@@ -72,7 +72,7 @@ class RouteOrdersCreate(BaseModel):
         None, description="Hora estimada de entrega para todos los pedidos"
     )
     id_user_vehicle: int | None = Field(
-        None, description="Conductor asignado a todos los pedidos (opcional)"
+        None, gt=0, description="Conductor asignado a todos los pedidos (opcional)"
     )
     orders: list[RouteOrderClientInput] = Field(
         ...,

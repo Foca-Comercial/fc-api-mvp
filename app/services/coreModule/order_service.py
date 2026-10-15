@@ -163,6 +163,12 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         self._ensure_reference(
             db, client_repository, obj_in.id_client, field="id_client", label="Cliente"
         )
+        if not client_repository.get(db, obj_in.id_client).is_registered:  # type: ignore
+            raise BusinessValidationError(
+                "Solo se pueden tomar pedidos de clientes registrados en este flujo.",
+                field="id_client",
+                code="CLIENT_NOT_REGISTERED",
+            )
         self._validate_items(db, obj_in.items)
         return self._create_order_with_items(
             db, id_client=obj_in.id_client, id_user_taker=id_user_taker, order_in=obj_in
