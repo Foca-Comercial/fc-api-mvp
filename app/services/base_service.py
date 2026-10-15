@@ -54,6 +54,18 @@ class BaseService(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             raise EntityNotFoundError(self.entity_name, id)
         return obj
 
+    def get_for_update(self, db: Session, id: Any) -> ModelType:
+        """Como `get`, pero bloquea la fila hasta el fin de la transacción.
+
+        Usar en operaciones que validan el estado actual antes de cambiarlo
+        (transiciones de estado), para que dos peticiones simultáneas no pasen
+        la misma validación.
+        """
+        obj = self.repository.get_for_update(db, id)
+        if obj is None:
+            raise EntityNotFoundError(self.entity_name, id)
+        return obj
+
     def create(self, db: Session, *, obj_in: CreateSchemaType) -> ModelType:
         self._validate_before_create(db, obj_in)
         obj_in = self._before_create(obj_in)

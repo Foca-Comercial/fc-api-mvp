@@ -496,13 +496,22 @@ tabla `user_session` le da estado (y por tanto, control) al refresh token.
 
 **Rotación + detección de reutilización** (`AuthService`):
 1. **Login** → crea una fila nueva (`revoked=false`).
-2. **Refresh** → busca la fila activa por el hash recibido; si existe y no expiró, se marca
-   `revoked=true` y se crea una fila nueva con un token distinto (rotación).
+2. **Refresh** → busca la fila activa por el hash recibido **bloqueándola**
+   (`SELECT ... FOR UPDATE`); si existe y no expiró, se marca `revoked=true` y se crea una
+   fila nueva con un token distinto (rotación). Revocación y sesión nueva se confirman en
+   **un solo `commit()`**, y el bloqueo dura hasta ese momento.
 3. **Reutilización detectada**: si el token recibido corresponde a una fila **ya
    revocada**, es señal de robo (el legítimo ya rotó, alguien más tiene una copia vieja) →
    se revocan **todas** las sesiones activas de ese usuario (`revoke_all_for_user`),
    forzando re-login en todos los dispositivos.
 4. **Logout** → revoca solo la sesión actual. **Logout-all** → revoca todas las del usuario.
+
+**Dos refresh simultáneos con el mismo token:** el segundo espera el bloqueo y, al
+continuar, encuentra la sesión ya revocada → se trata como reutilización (paso 3) y se
+cierran todas las sesiones del usuario. Es el comportamiento seguro, pero implica una
+regla para el frontend: **un solo refresh en vuelo a la vez** (si varias peticiones
+reciben 401 al mismo tiempo, todas esperan la misma promesa de refresh en lugar de lanzar
+una cada una).
 
 **Hasheo del refresh token:** SHA-256 (determinístico, para poder *buscar* por hash exacto),
 **no** `pwdlib`/Argon2 (que genera un hash distinto cada vez, pensado para que no se pueda
@@ -724,6 +733,22 @@ CANCELLED es estado terminal alcanzable desde los anteriores (gestión pendiente
   `id_user_vehicle` del pedido corresponda al usuario autenticado).
 - **Sin `DELETE /orders/{id}`**: un pedido no se elimina; se cancelará con su propio endpoint.
 
+### Concurrencia — bloqueo de fila en transiciones de estado
+
+Las operaciones que **validan el estado del pedido y luego lo cambian** leen el pedido con
+`OrderService.get_for_update()` (→ `BaseRepository.get_for_update()`, un
+`SELECT ... FOR UPDATE` con `populate_existing=True`): `dispatch_order`, `deliver_order`,
+`sync_items` y el `PATCH` de reasignación de conductor (`OrderService.update`).
+
+La fila queda bloqueada hasta el `commit()`/`rollback()` de esa petición. Si llegan dos
+peticiones sobre el mismo pedido, la segunda **espera** y luego valida contra el estado ya
+actualizado; por ejemplo, dos `/dispatch` simultáneos dan un 200 y un 422 ("Solo se pueden
+despachar pedidos en estado 'PENDING'"), nunca dos despachos.
+
+Se bloquea solo la fila de `sale_order` (sin joins en la consulta del bloqueo). Los
+detalles quedan protegidos porque toda escritura sobre ellos pasa por `sync_items`, que
+bloquea primero el pedido.
+
 ---
 
 ## 11. Pendientes / Roadmap
@@ -777,7 +802,10 @@ CANCELLED es estado terminal alcanzable desde los anteriores (gestión pendiente
 10. Todo router nuevo hereda de `SecuredRouter`; todo endpoint nuevo nace restringido a
     `ADMINISTRADOR` por defecto — se abre explícitamente con `roles=[...]` según la regla de
     negocio real. No exponer `DELETE` en entidades sin `active` ni regla de borrado clara.
-11. Rutas literales (`/catalog`, `/search`, `/dashboard-summary`, `/dispatched-summary`) siempre declaradas antes
-    que rutas con parámetro de posición equivalente (`/{id}`) en el mismo archivo de router
+11. Toda operación que valide el estado actual de un registro antes de cambiarlo (máquina
+    de estados, sincronizaciones) lo lee con `get_for_update()` en el service, no con
+    `get()`.
+12. Rutas literales (`/catalog`, `/search`, `/dashboard-summary`, `/dispatched-summary`)
+    siempre declaradas antes que rutas con parámetro de posición equivalente (`/{id}`) en el mismo archivo de router
     — el *routing* de FastAPI/Starlette evalúa en orden y se queda con la primera
     coincidencia.

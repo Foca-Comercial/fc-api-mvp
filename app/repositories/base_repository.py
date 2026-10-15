@@ -39,6 +39,23 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         # db.get() es la sintaxis optimizada de SQLAlchemy 2.0 para buscar por PK
         return db.get(self.model, id)
 
+    def get_for_update(self, db: Session, id: Any) -> ModelType | None:
+        """Lee por PK bloqueando la fila (SELECT ... FOR UPDATE) hasta el commit/rollback.
+
+        Una segunda transacción que pida la misma fila espera a que la primera
+        termine. `populate_existing` fuerza a recargar los valores desde la BD
+        aunque el objeto ya estuviera en la sesión, para validar sobre el estado
+        real posterior al bloqueo.
+        """
+        pk_column = self._primary_key_columns[0]
+        stmt = (
+            select(self.model)
+            .where(pk_column == id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return db.scalar(stmt)
+
     def get_by_field(self, db: Session, field: str, value: Any) -> ModelType | None:
         stmt = select(self.model).where(getattr(self.model, field) == value)
         return db.scalars(stmt).first()

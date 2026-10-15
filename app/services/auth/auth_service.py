@@ -50,7 +50,11 @@ class AuthService:
         ip_address: str | None = None,
     ) -> Token:
         token_hash = hash_refresh_token(refresh_token)
-        session = user_session_repository.get_by_token_hash(db, token_hash)
+        # Bloquea la sesión: dos refresh simultáneos con el mismo token no pueden
+        # rotarla dos veces. El segundo espera y luego cae en "reutilización".
+        session = user_session_repository.get_by_token_hash(
+            db, token_hash, for_update=True
+        )
 
         if session is None:
             # No existe como sesión activa: nunca existió, o ya fue usada antes
@@ -69,7 +73,9 @@ class AuthService:
         if user is None or not user.active:
             raise UnauthorizedError("El usuario ya no existe o está inactivo.")
 
-        user_session_repository.revoke(db, session)  # rotación
+        # Rotación atómica: la revocación se confirma en el mismo commit que crea
+        # la sesión nueva (en _issue_tokens), y el bloqueo dura hasta entonces.
+        user_session_repository.revoke(db, session, commit=False)
         return self._issue_tokens(
             db, user, user_agent=user_agent, ip_address=ip_address
         )

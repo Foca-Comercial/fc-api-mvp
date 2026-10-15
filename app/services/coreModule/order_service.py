@@ -198,7 +198,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
 
     # Marcar pdido como despachado
     def dispatch_order(self, db: Session, id_order: int) -> Order:
-        order = self.get(db, id_order)
+        order = self.get_for_update(db, id_order)
 
         if order.state != OrderState.PENDING:
             raise BusinessValidationError(
@@ -217,7 +217,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
 
     # Marcar pdido como entregado
     def deliver_order(self, db: Session, id_order: int) -> Order:
-        order = self.get(db, id_order)
+        order = self.get_for_update(db, id_order)
 
         if order.state != OrderState.DISPATCHED:
             raise BusinessValidationError(
@@ -269,7 +269,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
     def sync_items(
         self, db: Session, *, id_order: int, items: list[OrderItemSync]
     ) -> Order:
-        order = self.get(db, id_order)  # 404 si no existe
+        order = self.get_for_update(db, id_order)  # 404 si no existe; bloquea la fila
 
         if order.state != OrderState.PENDING:
             raise BusinessRuleViolationError(
@@ -340,6 +340,13 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         return order
 
     _FINAL_STATES = (OrderState.DELIVERED, OrderState.CANCELLED)
+
+    # PATCH (reasignar conductor): mismo flujo que BaseService.update, pero
+    # bloqueando la fila, porque la validación depende del estado del pedido.
+    def update(self, db: Session, *, id: int, obj_in: OrderUpdate) -> Order:
+        db_obj = self.get_for_update(db, id)
+        self._validate_before_update(db, obj_in, db_obj)
+        return self.repository.update(db, db_obj=db_obj, obj_in=obj_in)
 
     def _validate_before_update(
         self, db: Session, obj_in: OrderUpdate, existing: Order
