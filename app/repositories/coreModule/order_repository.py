@@ -1,10 +1,12 @@
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import Date, cast, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.timezone import BOGOTA_TZ
 from app.models.coreModule.client import Client
+from app.models.coreModule.daily_order_counter import DailyOrderCounter
 from app.models.coreModule.order import Order
 from app.models.coreModule.order_detail import OrderDetail
 from app.models.coreModule.product import Product
@@ -20,6 +22,24 @@ from app.utils.enums.order_state import OrderState
 
 
 class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
+    # Siguiente consecutivo del día (hora de Bogotá). Debe llamarse dentro de la
+    # misma transacción que inserta el pedido: bloquea la fila del día hasta el
+    # commit y se revierte junto con él.
+    def next_daily_number(self, db: Session) -> int:
+        # now() es la hora de inicio de la transacción: el mismo instante que
+        # recibirá creation_datetime (server_default), así el día coincide.
+        today = cast(func.timezone(BOGOTA_TZ.key, func.now()), Date)
+        stmt = (
+            insert(DailyOrderCounter)
+            .values(counter_date=today, last_value=1)
+            .on_conflict_do_update(
+                index_elements=[DailyOrderCounter.counter_date],
+                set_={"last_value": DailyOrderCounter.last_value + 1},
+            )
+            .returning(DailyOrderCounter.last_value)
+        )
+        return db.scalar(stmt)  # type: ignore
+
     # Tabla principal: pedidos del día por gestionar (pendientes y cancelados)
     def get_daily_summary(self, db: Session, target_date: date) -> list[tuple]:
         return self._summary_by_states(

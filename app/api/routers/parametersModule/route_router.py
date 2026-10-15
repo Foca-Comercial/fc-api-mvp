@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.parametersModule.route_schema import (
+    RouteAvailableClientResponse,
     RouteCardResponse,
     RouteClientAssign,
     RouteClientResponse,
@@ -78,6 +79,21 @@ def delete_route(
 )
 def get_route_clients(route_id: int, db: Session = Depends(get_db)):  # noqa: B008
     return route_service.get_clients(db, route_id)
+
+
+# Selector para asignar: solo clientes registrados, activos y sin asignar
+@router.get(
+    "/{route_id}/available-clients",
+    response_model=list[RouteAvailableClientResponse],
+    roles=ROUTE_MANAGERS,
+)
+def get_route_available_clients(
+    route_id: int,
+    name: str | None = Query(None, min_length=2),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return route_service.get_available_clients(db, route_id, name=name, limit=limit)
 
 
 @router.post(

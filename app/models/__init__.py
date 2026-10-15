@@ -1,5 +1,6 @@
 from app.models.coreModule.client import Client
 from app.models.coreModule.client_route import ClientRoute
+from app.models.coreModule.daily_order_counter import DailyOrderCounter
 from app.models.coreModule.order import Order
 from app.models.coreModule.order_detail import OrderDetail
 from app.models.coreModule.product import Product
@@ -19,6 +20,7 @@ from app.models.securityModule.user_session import UserSession
 __all__ = [
     "Client",
     "ClientRoute",
+    "DailyOrderCounter",
     "Neighborhood",
     "Order",
     "OrderDetail",

@@ -188,3 +188,52 @@ def test_ruta_inactiva_sigue_gestionando_clientes(client, data):
 
 def test_clientes_de_ruta_inexistente(client):
     assert client.get(f"{API}/routes/999999/clients").status_code == 404
+
+
+# --- Solo clientes registrados se asignan a rutas ----------------------------------
+
+
+def test_no_se_asigna_un_cliente_no_registrado(client, db, data):
+    route = _post_route(client)
+    temporary = _new_client(db, data, "CLIENTE DE PASO")  # is_registered=False
+
+    response = client.post(
+        f"{API}/routes/{route['id_route']}/clients",
+        json={"id_client": temporary.id_client},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "CLIENT_NOT_REGISTERED"
+
+
+def test_selector_muestra_solo_registrados_activos_y_sin_asignar(client, db, data):
+    route = _post_route(client)
+    url = f"{API}/routes/{route['id_route']}"
+    other = _new_client(db, data, "OTRO REGISTRADO")
+    other.is_registered = True
+    temporary = _new_client(db, data, "CLIENTE DE PASO")
+    inactive = _new_client(db, data, "REGISTRADO INACTIVO", active=False)
+    inactive.is_registered = True
+    db.commit()
+    client.post(f"{url}/clients", json={"id_client": data.client.id_client})
+
+    ids = {c["id_client"] for c in client.get(f"{url}/available-clients").json()}
+
+    assert other.id_client in ids
+    assert data.client.id_client not in ids  # ya asignado
+    assert temporary.id_client not in ids  # no registrado
+    assert inactive.id_client not in ids  # inactivo
+
+
+def test_selector_filtra_por_nombre(client, db, data):
+    route = _post_route(client)
+    found = _new_client(db, data, "TIENDA LA ESQUINA")
+    found.is_registered = True
+    db.commit()
+
+    response = client.get(
+        f"{API}/routes/{route['id_route']}/available-clients?name=esquina"
+    )
+
+    assert response.status_code == 200, response.text
+    assert [c["id_client"] for c in response.json()] == [found.id_client]

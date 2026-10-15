@@ -15,7 +15,6 @@ def _order_count(db) -> int:
 
 def test_crear_pedido_cliente_existente_calcula_subtotales_y_total(client, data):
     body = {
-        "purchase_order": "001",
         "id_client": data.client.id_client,
         "items": [
             item(data.products[0], 2),  # 2 x 3000
@@ -37,7 +36,6 @@ def test_crear_pedido_cliente_existente_calcula_subtotales_y_total(client, data)
 def test_crear_pedido_cliente_nuevo_normaliza_nombre_y_direccion(client, data, db):
     """Regresión bug 5: NewClientInput usa UpperText, igual que POST /clients."""
     body = {
-        "purchase_order": "002",
         "client": {
             "name": "  pedro pérez ",
             "address": " calle 10 # 5-20 ",
@@ -58,7 +56,6 @@ def test_crear_pedido_con_producto_repetido_responde_422(client, data, db):
     """Paso 5: un producto no puede aparecer en dos renglones."""
     before = _order_count(db)
     body = {
-        "purchase_order": "003",
         "id_client": data.client.id_client,
         "items": [item(data.products[0], 1), item(data.products[0], 3)],
     }
@@ -72,7 +69,6 @@ def test_crear_pedido_con_producto_repetido_responde_422(client, data, db):
 def test_crear_pedido_con_producto_inexistente_no_crea_nada(client, data, db):
     before = _order_count(db)
     body = {
-        "purchase_order": "004",
         "id_client": data.client.id_client,
         "items": [{"id_product": 999_999, "cant": 1, "unit_price": "100"}],
     }

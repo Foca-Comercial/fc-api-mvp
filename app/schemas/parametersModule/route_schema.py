@@ -56,6 +56,19 @@ class RouteClientAssign(BaseModel):
     id_client: int = Field(..., gt=0, description="Cliente a asignar a la ruta")
 
 
+class RouteAvailableClientResponse(BaseModel):
+    """Cliente que se puede asignar a la ruta (registrado, activo y sin asignar)."""
+
+    id_client: int
+    name: str
+    phone: str | None
+    address: str | None
+    neighborhood_name: str
+    zone_name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class RouteClientResponse(BaseModel):
     id_client_route: int
     id_client: int

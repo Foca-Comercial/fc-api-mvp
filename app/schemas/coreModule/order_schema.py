@@ -35,7 +35,7 @@ class OrderItemInput(BaseModel):
 
 
 class OrderCreateBase(BaseModel):
-    purchase_order: str = Field(..., max_length=3)
+    # Sin purchase_order: el servidor asigna el consecutivo del día.
     estimated_delivery: time | None = None
     id_user_vehicle: int | None = Field(None, description="Opcional")
     items: list[OrderItemInput] = Field(..., min_length=1)

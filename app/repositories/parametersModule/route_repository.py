@@ -1,4 +1,4 @@
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, exists, func, select
 from sqlalchemy.orm import Session
 
 from app.models.coreModule.client import Client
@@ -62,6 +62,37 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
             .where(ClientRoute.id_route == id_route)
             .order_by(Client.name)
         )
+        return list(db.execute(stmt).all())
+
+    # Clientes que se pueden asignar: registrados, activos y aún no en esta ruta
+    def get_available_clients(
+        self, db: Session, id_route: int, *, name: str | None = None, limit: int = 20
+    ) -> list[tuple]:
+        already_assigned = exists().where(
+            ClientRoute.id_client == Client.id_client,
+            ClientRoute.id_route == id_route,
+        )
+        stmt = (
+            select(
+                Client.id_client,
+                Client.name,
+                Client.phone,
+                Client.address,
+                Neighborhood.name.label("neighborhood_name"),
+                Zone.name.label("zone_name"),
+            )
+            .join(Neighborhood, Neighborhood.id_neighborhood == Client.id_neighborhood)
+            .join(Zone, Zone.id_zone == Neighborhood.id_zone)
+            .where(
+                Client.active.is_(True),
+                Client.is_registered.is_(True),
+                ~already_assigned,
+            )
+            .order_by(Client.name)
+            .limit(limit)
+        )
+        if name:
+            stmt = stmt.where(Client.name.ilike(f"%{name}%"))
         return list(db.execute(stmt).all())
 
 

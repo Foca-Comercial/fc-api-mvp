@@ -34,6 +34,10 @@ from app.utils.exceptions.business_exceptions import (
 )
 
 
+# purchase_order es String(3): consecutivo diario de 001 a 999
+MAX_DAILY_ORDERS = 999
+
+
 class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
     references = (
         ReferenceRule("id_user_vehicle", "Vehículo", user_vehicle_repository),
@@ -167,7 +171,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         order = order_repository.add(
             db,
             obj_in_data={
-                "purchase_order": order_in.purchase_order,
+                "purchase_order": self._next_purchase_order(db),
                 "estimated_delivery": order_in.estimated_delivery,
                 "id_client": id_client,
                 "id_user_vehicle": order_in.id_user_vehicle,
@@ -195,6 +199,18 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         db.commit()
         db.refresh(order)
         return order
+
+    # Consecutivo del día ("001", "002", ...). Lo asigna el servidor, nunca el
+    # cliente; los pedidos de días anteriores conservan el número que recibieron.
+    def _next_purchase_order(self, db: Session) -> str:
+        number = order_repository.next_daily_number(db)
+        if number > MAX_DAILY_ORDERS:
+            # La excepción revierte la transacción, incluido el incremento
+            raise BusinessRuleViolationError(
+                f"Se alcanzó el máximo de {MAX_DAILY_ORDERS} pedidos del día.",
+                code="DAILY_ORDER_LIMIT",
+            )
+        return f"{number:03d}"
 
     # Marcar pdido como despachado
     def dispatch_order(self, db: Session, id_order: int) -> Order:

@@ -5,6 +5,7 @@ from app.repositories.coreModule.client_repository import client_repository
 from app.repositories.coreModule.client_route_repository import client_route_repository
 from app.repositories.parametersModule.route_repository import route_repository
 from app.schemas.parametersModule.route_schema import (
+    RouteAvailableClientResponse,
     RouteCardResponse,
     RouteClientResponse,
     RouteCreate,
@@ -12,7 +13,11 @@ from app.schemas.parametersModule.route_schema import (
 )
 from app.services.base_service import BaseService, UniqueRule
 from app.services.validation import ensure_reference
-from app.utils.exceptions.business_exceptions import ConflictError, EntityNotFoundError
+from app.utils.exceptions.business_exceptions import (
+    BusinessValidationError,
+    ConflictError,
+    EntityNotFoundError,
+)
 
 
 class RouteService(BaseService[Route, RouteCreate, RouteUpdate]):
@@ -48,6 +53,17 @@ class RouteService(BaseService[Route, RouteCreate, RouteUpdate]):
             for row in route_repository.get_clients(db, id_route)
         ]
 
+    def get_available_clients(
+        self, db: Session, id_route: int, *, name: str | None = None, limit: int = 20
+    ) -> list[RouteAvailableClientResponse]:
+        self.get(db, id_route)
+        return [
+            RouteAvailableClientResponse.model_validate(row)
+            for row in route_repository.get_available_clients(
+                db, id_route, name=name, limit=limit
+            )
+        ]
+
     def assign_client(
         self, db: Session, *, id_route: int, id_client: int
     ) -> RouteClientResponse:
@@ -56,6 +72,13 @@ class RouteService(BaseService[Route, RouteCreate, RouteUpdate]):
         ensure_reference(
             db, client_repository, id_client, field="id_client", label="Cliente"
         )
+        # Los clientes temporales (creados desde un pedido) no se asignan a rutas
+        if not client_repository.get(db, id_client).is_registered:
+            raise BusinessValidationError(
+                "Solo se pueden asignar a una ruta clientes registrados.",
+                field="id_client",
+                code="CLIENT_NOT_REGISTERED",
+            )
         if client_route_repository.get_by_pair(
             db, id_route=id_route, id_client=id_client
         ):

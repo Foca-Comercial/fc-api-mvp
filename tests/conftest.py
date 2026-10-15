@@ -176,7 +176,6 @@ def create_order(client: TestClient, data):
 
     def _create(items: list[dict] | None = None, **extra) -> dict:
         body = {
-            "purchase_order": "001",
             "id_client": data.client.id_client,
             "items": items or [item(data.products[0], 2)],
             **extra,
