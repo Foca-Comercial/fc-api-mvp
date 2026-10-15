@@ -623,7 +623,9 @@ ante cualquier excepción no capturada que suba hasta el router sin commit expl�
 
 Ambos validan referencias (barrio/cliente, productos) **antes** de crear nada, calculan
 `subtotal = cant * unit_price` por cada item (nunca se confía en un subtotal enviado por el
-cliente) y `order_total` como la suma. `id_user_taker` se obtiene del usuario autenticado
+cliente) y `order_total` como la suma. Un mismo producto no puede repetirse en dos
+renglones del pedido (`_ensure_no_duplicate_products` → 422 con código
+`DUPLICATE_PRODUCT`); la cantidad se agrupa en un solo renglón. `id_user_taker` se obtiene del usuario autenticado
 (`current.user.id_user`), nunca del body — ya disponible porque `get_current_user` carga el
 `User` completo desde el JWT.
 
@@ -648,7 +650,14 @@ class OrderItemSync(BaseModel):
 ```
 Cualquier `OrderDetail` existente que **no** aparezca en la lista enviada se elimina. Mismo
 patrón de atomicidad (`flush`/`commit` único) que la creación. Solo permitido mientras
-`order.state == PENDING`.
+`order.state == PENDING`. La lista final tampoco puede repetir productos (misma validación
+que la creación, aplicada antes de modificar nada). Se valida en el service y no con un
+`UniqueConstraint(id_order, id_product)` en BD, porque la sincronización borra y reescribe
+renglones dentro de la misma transacción.
+
+**`/orders_details` es solo lectura** (`GET /` y `GET /{id}`, ADMIN): los detalles se
+crean, editan y eliminan únicamente por este endpoint de sincronización, que valida el
+estado del pedido y recalcula `order_total`.
 
 **Cuidado al eliminar de una colección ya cargada en memoria:** no basta con `db.delete(obj)`
 si `obj` sigue referenciado en una relación cargada (`order.order_details`) — hay que
@@ -671,10 +680,15 @@ datos de un cliente existente en el flujo de registro de pedido.
 ### Consultas de pedidos para la UI
 
 - **`GET /orders/dashboard-summary?target_date=AAAA-MM-DD`** (`GESTOR_COMERCIAL`): tabla
-  principal del día. `target_date` es opcional y por defecto toma la fecha de hoy en Bogotá
-  (`today_bogota`). El filtro por día y la hora mostrada (`creation_time`) se calculan sobre
-  `creation_datetime` convertido a hora de Bogotá en SQL. Hoy excluye solo los pedidos
-  `DISPATCHED`.
+  principal del día, con los pedidos por gestionar: `PENDING` y `CANCELLED`.
+- **`GET /orders/dispatched-summary?target_date=AAAA-MM-DD`** (`GESTOR_COMERCIAL`): vista de
+  los pedidos del día que ya salieron: `DISPATCHED` y `DELIVERED`.
+
+  Ambas comparten la misma consulta (`RepositoryOrder._summary_by_states`) y el mismo
+  formato de respuesta (`OrderSummaryResponse`). `target_date` es opcional y por defecto
+  toma la fecha de hoy en Bogotá (`today_bogota`). El filtro por día y la hora mostrada
+  (`creation_time`) se calculan sobre `creation_datetime` convertido a hora de Bogotá en
+  SQL; el "día" de un pedido es el de su creación.
 - **`GET /orders/{id}/details`** (`GESTOR_COMERCIAL`): detalle completo para el modal —
   items (con `id_order_detail`, para editarlos luego vía `PUT /items-order`), cliente,
   barrio, zona y conductor. `driver_code` / `driver_name` llegan en `null` si el pedido no
@@ -763,7 +777,7 @@ CANCELLED es estado terminal alcanzable desde los anteriores (gestión pendiente
 10. Todo router nuevo hereda de `SecuredRouter`; todo endpoint nuevo nace restringido a
     `ADMINISTRADOR` por defecto — se abre explícitamente con `roles=[...]` según la regla de
     negocio real. No exponer `DELETE` en entidades sin `active` ni regla de borrado clara.
-11. Rutas literales (`/catalog`, `/search`, `/dashboard-summary`) siempre declaradas antes
+11. Rutas literales (`/catalog`, `/search`, `/dashboard-summary`, `/dispatched-summary`) siempre declaradas antes
     que rutas con parámetro de posición equivalente (`/{id}`) en el mismo archivo de router
     — el *routing* de FastAPI/Starlette evalúa en orden y se queda con la primera
     coincidencia.

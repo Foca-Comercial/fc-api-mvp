@@ -42,6 +42,18 @@ def get_dashboard_summary(
 
 
 @router.get(
+    "/dispatched-summary",
+    response_model=list[OrderSummaryResponse],
+    roles=["GESTOR_COMERCIAL"],
+)
+def get_dispatched_summary(
+    target_date: date | None = Query(default_factory=today_bogota),  # type: ignore  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return order_service.get_dispatched_summary(db, target_date)  # type: ignore
+
+
+@router.get(
     "/{id_order}/details",
     response_model=OrderFullDetailResponse,
     roles=["GESTOR_COMERCIAL"],

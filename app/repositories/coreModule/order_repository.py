@@ -20,8 +20,21 @@ from app.utils.enums.order_state import OrderState
 
 
 class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
-    # Obtiene todos los pedidos del dia
+    # Tabla principal: pedidos del día por gestionar (pendientes y cancelados)
     def get_daily_summary(self, db: Session, target_date: date) -> list[tuple]:
+        return self._summary_by_states(
+            db, target_date, (OrderState.PENDING, OrderState.CANCELLED)
+        )
+
+    # Vista de despachados: pedidos del día que ya salieron (despachados y entregados)
+    def get_dispatched_summary(self, db: Session, target_date: date) -> list[tuple]:
+        return self._summary_by_states(
+            db, target_date, (OrderState.DISPATCHED, OrderState.DELIVERED)
+        )
+
+    def _summary_by_states(
+        self, db: Session, target_date: date, states: tuple[OrderState, ...]
+    ) -> list[tuple]:
         # creation_datetime es TIMESTAMPTZ: se convierte a hora local de Bogotá
         # antes de extraer fecha/hora, sin depender de la zona de la sesión.
         created_local = func.timezone(BOGOTA_TZ.key, Order.creation_datetime)
@@ -54,8 +67,8 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .where(
                 # 1. Filtrar solo los del día indicado (por defecto hoy)
                 func.date(created_local) == target_date,
-                # 2. Excluir los despachados para limpiar la tabla principal
-                Order.state != OrderState.DISPATCHED,
+                # 2. Solo los estados que corresponden a la vista
+                Order.state.in_(states),
             )
             .group_by(
                 Order.id_order,

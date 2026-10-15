@@ -42,12 +42,22 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
     def __init__(self):
         super().__init__(repository=order_repository, entity_name="Pedido")
 
-    # Obtiene todos los pedidos del dia
+    # Tabla principal: pedidos del día en PENDING y CANCELLED
     def get_dashboard_summary(
         self, db: Session, target_date: date
     ) -> list[OrderSummaryResponse]:
-        rows = order_repository.get_daily_summary(db, target_date)
+        return self._to_summary(order_repository.get_daily_summary(db, target_date))
 
+    # Vista de despachados: pedidos del día en DISPATCHED y DELIVERED
+    def get_dispatched_summary(
+        self, db: Session, target_date: date
+    ) -> list[OrderSummaryResponse]:
+        return self._to_summary(
+            order_repository.get_dispatched_summary(db, target_date)
+        )
+
+    @staticmethod
+    def _to_summary(rows: list) -> list[OrderSummaryResponse]:
         return [
             OrderSummaryResponse(
                 id_order=row.id_order,  # type: ignore
@@ -225,6 +235,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         return order
 
     def _validate_items(self, db: Session, items: list[OrderItemInput]) -> None:
+        self._ensure_no_duplicate_products(items)
         for item in items:
             self._ensure_reference(
                 db,
@@ -232,6 +243,26 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 item.id_product,
                 field="id_product",
                 label="Producto",
+            )
+
+    @staticmethod
+    def _ensure_no_duplicate_products(
+        items: list[OrderItemInput] | list[OrderItemSync],
+    ) -> None:
+        """Un producto solo puede aparecer en un renglón del pedido."""
+        seen: set[int] = set()
+        duplicated: list[int] = []
+        for item in items:
+            if item.id_product in seen and item.id_product not in duplicated:
+                duplicated.append(item.id_product)
+            seen.add(item.id_product)
+        if duplicated:
+            ids = ", ".join(str(i) for i in duplicated)
+            raise BusinessValidationError(
+                f"Producto repetido en el pedido (ID: {ids}). "
+                "Agrupa la cantidad en un solo renglón.",
+                field="id_product",
+                code="DUPLICATE_PRODUCT",
             )
 
     # Actualiacion de Pedido (Quitar, Agregar, Modificar -> Productos)
@@ -245,6 +276,9 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 f"No se pueden modificar los productos de un pedido en estado "
                 f"'{order.state.value}'. Solo se permite mientras está 'PENDING'."
             )
+
+        # Antes de tocar nada: la lista final no puede repetir productos
+        self._ensure_no_duplicate_products(items)
 
         existing_details = {d.id_order_detail: d for d in order.order_details}
         incoming_ids = {
