@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.api.exception_handlers import register_exception_handlers
 from app.api.routers.auth import auth_router
 from app.api.routers.coreModule import (
+    archive_router,
     client_route_router,
     client_router,
     order_detail_router,
@@ -55,6 +56,7 @@ app.include_router(order_detail_router.router, prefix="/api/v1")
 app.include_router(user_vehicle_router.router, prefix="/api/v1")
 app.include_router(shift_closure_router.router, prefix="/api/v1")
 app.include_router(client_route_router.router, prefix="/api/v1")
+app.include_router(archive_router.router, prefix="/api/v1")
 
 # Registro de Excepciones
 register_exception_handlers(app)
