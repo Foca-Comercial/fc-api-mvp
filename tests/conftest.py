@@ -59,7 +59,8 @@ from app.models.securityModule.person import Person
 from app.models.securityModule.role import Role
 from app.models.securityModule.user import User
 from app.models.securityModule.user_role import UserRole
-from tests.helpers import API, item
+from app.services.coreModule.sheets_writer import get_sheets_writer
+from tests.helpers import API, FakeSheetsWriter, item
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -185,3 +186,20 @@ def create_order(client: TestClient, data):
         return response.json()
 
     return _create
+
+
+@pytest.fixture()
+def writer(client):
+    """Reemplaza el escritor de Google Sheets por uno en memoria."""
+    fake = FakeSheetsWriter()
+    app.dependency_overrides[get_sheets_writer] = lambda: fake
+    return fake
+
+
+@pytest.fixture()
+def admin(client, data, writer):
+    """El mismo TestClient, autenticado como ADMINISTRADOR."""
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        user=data.taker, roles=["ADMINISTRADOR"]
+    )
+    return client

@@ -8,54 +8,17 @@ from decimal import Decimal
 
 import pytest
 
-from app.api.dependencies import CurrentUser, get_current_user
 from app.core.timezone import today_bogota
-from app.main import app
 from app.models.coreModule.archive_spreadsheet import ArchiveSpreadsheet
 from app.models.coreModule.monthly_archive import MonthlyArchive
 from app.models.coreModule.order import Order
 from app.services.coreModule.archive_export import HEADER, MONEY_COLUMNS
-from app.services.coreModule.sheets_writer import get_sheets_writer
 from app.utils.enums.archive_status import ArchiveStatus
 from app.utils.enums.order_state import OrderState
 from app.utils.exceptions.business_exceptions import ExternalServiceError
 from tests.helpers import API, item
 
 SHEET_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abc"
-
-
-class FakeSheetsWriter:
-    def __init__(self) -> None:
-        self.sheets: dict[tuple[str, str], dict] = {}
-        self.calls = 0
-        self.fail: Exception | None = None
-        self.lose_rows = 0  # simula filas que no quedaron escritas
-
-    def write_sheet(self, spreadsheet_id, title, header, rows, money_columns=()):
-        self.calls += 1
-        if self.fail:
-            raise self.fail
-        self.sheets[(spreadsheet_id, title)] = {
-            "header": list(header),
-            "rows": [list(r) for r in rows],
-            "money_columns": list(money_columns),
-        }
-        return len(rows) - self.lose_rows
-
-
-@pytest.fixture()
-def writer():
-    fake = FakeSheetsWriter()
-    app.dependency_overrides[get_sheets_writer] = lambda: fake
-    return fake
-
-
-@pytest.fixture()
-def admin(client, data, writer):
-    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
-        user=data.taker, roles=["ADMINISTRADOR"]
-    )
-    return client
 
 
 @pytest.fixture()

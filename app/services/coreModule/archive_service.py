@@ -1,21 +1,23 @@
 import re
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.timezone import today_bogota
-
 from app.models.coreModule.archive_spreadsheet import ArchiveSpreadsheet
 from app.models.coreModule.monthly_archive import MonthlyArchive
 from app.repositories.coreModule.archive_repository import (
     archive_spreadsheet_repository,
     lock_archive,
     monthly_archive_repository,
+    purge_repository,
 )
 from app.repositories.coreModule.order_repository import order_repository
 from app.schemas.coreModule.archive_schema import (
     ArchiveSpreadsheetResponse,
     MonthlyArchiveResponse,
+    PurgeResponse,
     month_label,
     spreadsheet_url,
 )
@@ -32,13 +34,27 @@ _PERIOD = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
 
 
 def parse_period(period: str) -> date:
-    """"2026-09" -> date(2026, 9, 1)."""
+    """ "2026-09" -> date(2026, 9, 1)."""
     match = _PERIOD.match(period)
     if not match:
         raise BusinessValidationError(
-            "El mes debe tener el formato AAAA-MM.", field="period", code="INVALID_PERIOD"
+            "El mes debe tener el formato AAAA-MM.",
+            field="period",
+            code="INVALID_PERIOD",
         )
     return date(int(match.group(1)), int(match.group(2)), 1)
+
+
+def add_months(month: date, delta: int) -> date:
+    """Primer día del mes desplazado `delta` meses (delta puede ser negativo)."""
+    index = month.year * 12 + (month.month - 1) + delta
+    return date(index // 12, index % 12 + 1, 1)
+
+
+def first_retained_month() -> date:
+    """Mes más antiguo que se conserva en la BD (no se puede purgar)."""
+    current = today_bogota().replace(day=1)
+    return add_months(current, -(settings.HISTORY_RETENTION_MONTHS - 1))
 
 
 class ArchiveService:
@@ -69,7 +85,65 @@ class ArchiveService:
         db.refresh(row)
         return self._archive_response(row)
 
+    # --- Purga ---
+
+    def purge_month(
+        self, db: Session, *, period: str, id_user: int, writer: SheetsWriter
+    ) -> PurgeResponse:
+        """Reexporta el mes (estado final), verifica y lo borra de la BD, en una
+        sola transacción. Si la exportación o la verificación fallan, no se borra
+        nada."""
+        archive_month = parse_period(period)
+        retained_from = first_retained_month()
+        if archive_month >= retained_from:
+            raise BusinessValidationError(
+                f"Solo se pueden purgar meses anteriores a {month_label(retained_from)}; "
+                f"se conservan los últimos {settings.HISTORY_RETENTION_MONTHS} meses.",
+                field="period",
+                code="MONTH_WITHIN_RETENTION",
+            )
+
+        lock_archive(db)
+        archive, order_ids = self._export_with_ids(
+            db, archive_month=archive_month, writer=writer
+        )
+        archive.id_user_exported = id_user
+
+        deleted_orders = purge_repository.delete_orders(db, order_ids)
+        if deleted_orders != archive.orders_count:
+            # No debería pasar (hay bloqueo); si pasa, se revierte todo
+            raise ConflictError(
+                f"Se esperaban {archive.orders_count} pedidos y se borraron "
+                f"{deleted_orders}. No se purgó nada; reintenta.",
+                field="period",
+                code="PURGE_MISMATCH",
+            )
+        deleted_clients = purge_repository.delete_orphan_temporary_clients(db)
+        deleted_counters = purge_repository.delete_counters_before(
+            db, add_months(archive_month, 1)
+        )
+        deleted_sessions = purge_repository.delete_expired_sessions(db)
+
+        archive.status = ArchiveStatus.PURGED
+        archive.purged_at = datetime.now(UTC)
+        archive.id_user_purged = id_user
+        db.commit()
+        db.refresh(archive)
+        return PurgeResponse(
+            archive=self._archive_response(archive),
+            deleted_orders=deleted_orders,
+            deleted_order_lines=archive.rows_count,
+            deleted_temporary_clients=deleted_clients,
+            deleted_order_counters=deleted_counters,
+            deleted_expired_sessions=deleted_sessions,
+        )
+
     def _export(self, db: Session, *, archive_month: date, writer: SheetsWriter):
+        return self._export_with_ids(db, archive_month=archive_month, writer=writer)[0]
+
+    def _export_with_ids(
+        self, db: Session, *, archive_month: date, writer: SheetsWriter
+    ):
         """Exporta y verifica, sin commit. Reutilizable por la purga (H5)."""
         existing = monthly_archive_repository.get(db, archive_month)
         if existing is not None and existing.status == ArchiveStatus.PURGED:
@@ -111,7 +185,7 @@ class ArchiveService:
                 f"pestaña {title} y hay {written}. Reintenta la exportación.",
             )
 
-        return monthly_archive_repository.save_export(
+        archive = monthly_archive_repository.save_export(
             db,
             archive_month=archive_month,
             status=ArchiveStatus.EXPORTED,
@@ -120,8 +194,10 @@ class ArchiveService:
             orders_count=table.orders_count,
             rows_count=len(table.rows),
             total_sales=table.total_sales,
-            exported_at=datetime.now(timezone.utc),
+            exported_at=datetime.now(UTC),
         )
+        # Ids exactos de lo exportado: la purga borra solo esos pedidos
+        return archive, sorted({row.id_order for row in source})  # type: ignore
 
     # --- Spreadsheet por año ---
 
@@ -145,7 +221,8 @@ class ArchiveService:
 
     def list_archives(self, db: Session) -> list[MonthlyArchiveResponse]:
         return [
-            self._archive_response(row) for row in monthly_archive_repository.get_all(db)
+            self._archive_response(row)
+            for row in monthly_archive_repository.get_all(db)
         ]
 
     # --- Mapeo ---

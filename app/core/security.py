@@ -12,7 +12,7 @@ from app.utils.exceptions.business_exceptions import UnauthorizedError
 
 def create_access_token(subject: str | int, *, roles: list[str] | None = None) -> str:
     """Genera un JWT firmado, con el id del usuario como `sub` y expiración."""
-    expire = datetime.now(timezone.utc) + timedelta(
+    expire = datetime.now(timezone.utc) + timedelta(  # noqa: UP017
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
     )
     payload: dict[str, Any] = {"sub": str(subject), "exp": expire}

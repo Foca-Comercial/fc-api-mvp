@@ -8,6 +8,7 @@ from app.schemas.coreModule.archive_schema import (
     ArchiveSpreadsheetResponse,
     ArchiveSpreadsheetSet,
     MonthlyArchiveResponse,
+    PurgeResponse,
 )
 from app.services.coreModule.archive_service import archive_service
 from app.services.coreModule.sheets_writer import SheetsWriter, get_sheets_writer
@@ -46,5 +47,19 @@ def export_month(
     writer: SheetsWriter = Depends(get_sheets_writer),  # noqa: B008
 ):
     return archive_service.export_month(
+        db, period=period, id_user=current.user.id_user, writer=writer
+    )
+
+
+# Reexporta y BORRA de la BD un mes fuera de la retención, p. ej.
+# POST /archive/2026-08/purge. Irreversible en la BD (queda en Google Sheets).
+@router.post("/{period}/purge", response_model=PurgeResponse)
+def purge_month(
+    period: str = Path(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$", examples=["2026-08"]),
+    db: Session = Depends(get_db),  # noqa: B008
+    current: CurrentUser = Depends(get_current_user),  # noqa: B008
+    writer: SheetsWriter = Depends(get_sheets_writer),  # noqa: B008
+):
+    return archive_service.purge_month(
         db, period=period, id_user=current.user.id_user, writer=writer
     )

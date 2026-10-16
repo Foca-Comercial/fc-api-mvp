@@ -51,6 +51,15 @@ class MonthlyArchiveResponse(BaseModel):
     id_user_purged: int | None
 
 
+class PurgeResponse(BaseModel):
+    archive: MonthlyArchiveResponse
+    deleted_orders: int
+    deleted_order_lines: int
+    deleted_temporary_clients: int
+    deleted_order_counters: int
+    deleted_expired_sessions: int
+
+
 def month_label(month: date) -> str:
     return f"{month.year:04d}-{month.month:02d}"
 

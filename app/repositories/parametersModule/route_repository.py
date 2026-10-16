@@ -1,4 +1,4 @@
-from sqlalchemy import and_, exists, func, select
+from sqlalchemy import and_, any_, exists, func, select
 from sqlalchemy.orm import Session
 
 from app.models.coreModule.client import Client
@@ -155,7 +155,7 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
                 clients_count.label("clients_count"),
                 orders_count.label("orders_count"),
             )
-            .where(Route.active.is_(True), Route.days_week.any(weekday))  # type: ignore
+            .where(Route.active.is_(True), weekday == any_(Route.days_week))  # type: ignore
             .order_by(Route.departure_time, Route.name)
         )
         return list(db.execute(stmt).all())

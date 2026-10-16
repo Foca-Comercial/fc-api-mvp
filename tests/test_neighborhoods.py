@@ -17,7 +17,9 @@ def test_selector_de_barrios_para_gestor(client, db, data):
     inactive = Neighborhood(
         name="BARRIO INACTIVO", id_zone=data.neighborhood.id_zone, active=False
     )
-    in_inactive_zone = Neighborhood(name="BARRIO HUERFANO", id_zone=inactive_zone.id_zone)
+    in_inactive_zone = Neighborhood(
+        name="BARRIO HUERFANO", id_zone=inactive_zone.id_zone
+    )
     db.add_all([inactive, in_inactive_zone])
     db.commit()
 
@@ -39,7 +41,9 @@ def test_crear_barrio_valida_la_zona(db, data):
     instancia, y crear o cambiar la zona de un barrio fallaba con 500."""
     created = neighborhood_service.create(
         db,
-        obj_in=NeighborhoodCreate(name="barrio nuevo", id_zone=data.neighborhood.id_zone),
+        obj_in=NeighborhoodCreate(
+            name="barrio nuevo", id_zone=data.neighborhood.id_zone
+        ),
     )
     assert created.name == "BARRIO NUEVO"
 
@@ -47,6 +51,8 @@ def test_crear_barrio_valida_la_zona(db, data):
     db.add(other_zone)
     db.commit()
     updated = neighborhood_service.update(
-        db, id=created.id_neighborhood, obj_in=NeighborhoodUpdate(id_zone=other_zone.id_zone)
+        db,
+        id=created.id_neighborhood,
+        obj_in=NeighborhoodUpdate(id_zone=other_zone.id_zone),  # type: ignore
     )
     assert updated.id_zone == other_zone.id_zone

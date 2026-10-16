@@ -5,23 +5,12 @@ from decimal import Decimal
 
 import pytest
 
-from app.api.dependencies import CurrentUser, get_current_user
-from app.main import app
 from app.models.coreModule.monthly_archive import MonthlyArchive
 from app.utils.enums.archive_status import ArchiveStatus
 from tests.helpers import API
 
 URL = f"{API}/archive"
 SHEET_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abc"
-
-
-@pytest.fixture()
-def admin(client, data):
-    """El mismo TestClient, autenticado como ADMINISTRADOR."""
-    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
-        user=data.taker, roles=["ADMINISTRADOR"]
-    )
-    return client
 
 
 def test_solo_admin(client):

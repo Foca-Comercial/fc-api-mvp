@@ -1,10 +1,14 @@
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, exists, func, select
 from sqlalchemy.orm import Session
 
 from app.models.coreModule.archive_spreadsheet import ArchiveSpreadsheet
+from app.models.coreModule.client import Client
+from app.models.coreModule.daily_order_counter import DailyOrderCounter
 from app.models.coreModule.monthly_archive import MonthlyArchive
+from app.models.coreModule.order import Order
+from app.models.securityModule.user_session import UserSession
 
 
 class RepositoryArchiveSpreadsheet:
@@ -15,7 +19,9 @@ class RepositoryArchiveSpreadsheet:
         stmt = select(ArchiveSpreadsheet).order_by(ArchiveSpreadsheet.year.desc())
         return list(db.scalars(stmt).all())
 
-    def upsert(self, db: Session, *, year: int, spreadsheet_id: str) -> ArchiveSpreadsheet:
+    def upsert(
+        self, db: Session, *, year: int, spreadsheet_id: str
+    ) -> ArchiveSpreadsheet:
         row = self.get(db, year)
         if row is None:
             row = ArchiveSpreadsheet(year=year, spreadsheet_id=spreadsheet_id)
@@ -47,6 +53,52 @@ class RepositoryMonthlyArchive:
                 setattr(row, field, value)
         db.flush()
         return row
+
+
+class RepositoryPurge:
+    """Borrados masivos del archivado. Sin commit: los confirma el servicio."""
+
+    def delete_orders(self, db: Session, order_ids: list[int]) -> int:
+        # Los detalles se borran por ON DELETE CASCADE (order_detail.id_order)
+        if not order_ids:
+            return 0
+        result = db.execute(
+            delete(Order)
+            .where(Order.id_order.in_(order_ids))
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount  # type: ignore
+
+    def delete_orphan_temporary_clients(self, db: Session) -> int:
+        """Clientes temporales (is_registered=False) que ya no tienen pedidos."""
+        has_orders = exists().where(Order.id_client == Client.id_client)
+        result = db.execute(
+            delete(Client)
+            .where(Client.is_registered.is_(False), ~has_orders)
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount  # type: ignore
+
+    def delete_counters_before(self, db: Session, day: date) -> int:
+        result = db.execute(
+            delete(DailyOrderCounter)
+            .where(DailyOrderCounter.counter_date < day)
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount  # type: ignore
+
+    def delete_expired_sessions(self, db: Session) -> int:
+        """Sesiones vencidas. Las revocadas que aún no vencen se conservan: sirven
+        para detectar la reutilización de un refresh token robado."""
+        result = db.execute(
+            delete(UserSession)
+            .where(UserSession.expires_at < func.now())
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount  # type: ignore
+
+
+purge_repository = RepositoryPurge()
 
 
 # Clave fija del bloqueo de archivado: dos exportaciones/purgas no corren a la vez

@@ -17,7 +17,9 @@ def test_update_aplica_campos_en_objeto_expirado(db, data):
     assert "name" in sa_inspect(product).expired_attributes
 
     product_repository.update(
-        db, db_obj=product, obj_in=ProductUpdate(name="hielo premium")
+        db,
+        db_obj=product,
+        obj_in=ProductUpdate(name="hielo premium"),  # type: ignore
     )
 
     db.expire_all()
@@ -29,7 +31,7 @@ def test_update_parcial_solo_toca_lo_enviado(db, data):
     original_price = product.base_price
     original_code = product.code
 
-    product_repository.update(db, db_obj=product, obj_in=ProductUpdate(active=False))
+    product_repository.update(db, db_obj=product, obj_in=ProductUpdate(active=False))  # type: ignore
 
     db.expire_all()
     assert product.active is False
