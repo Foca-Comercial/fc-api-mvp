@@ -3,9 +3,9 @@ from decimal import Decimal
 
 from sqlalchemy import Date, case, cast, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, aliased, joinedload
 
-from app.core.timezone import BOGOTA_TZ
+from app.core.timezone import BOGOTA_TZ, bogota_month_range
 from app.models.coreModule.client import Client
 from app.models.coreModule.daily_order_counter import DailyOrderCounter
 from app.models.coreModule.order import Order
@@ -213,6 +213,57 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .order_by(Order.creation_datetime.desc(), Order.id_order.desc())
             .offset(offset)
             .limit(limit)
+        )
+        return list(db.execute(stmt).all())
+
+    # ------------------------------------------------------------------
+    # Archivado mensual: una fila por producto vendido del mes
+    # ------------------------------------------------------------------
+    def get_month_export_rows(self, db: Session, year: int, month: int) -> list[tuple]:
+        start, end = bogota_month_range(year, month)
+        created_local = func.timezone(BOGOTA_TZ.key, Order.creation_datetime)
+        DriverUser = aliased(User)
+        DriverPerson = aliased(Person)
+        TakerUser = aliased(User)
+        TakerPerson = aliased(Person)
+        stmt = (
+            select(
+                Order.id_order,
+                cast(created_local, Date).label("order_date"),
+                func.to_char(created_local, "HH24:MI").label("creation_time"),
+                Order.purchase_order,
+                Client.name.label("client_name"),
+                Client.phone.label("client_phone"),
+                Neighborhood.name.label("neighborhood_name"),
+                Zone.name.label("zone_name"),
+                Route.name.label("route_name"),
+                UserVehicle.code.label("driver_code"),
+                (DriverPerson.name + " " + DriverPerson.last_name).label("driver_name"),
+                (TakerPerson.name + " " + TakerPerson.last_name).label("taker_name"),
+                Order.state,
+                Order.dispatch_time,
+                Order.delivery_time,
+                Product.code.label("product_code"),
+                Product.name.label("product_name"),
+                OrderDetail.cant,
+                OrderDetail.unit_price,
+                OrderDetail.subtotal,
+                Order.order_total,
+            )
+            .join(OrderDetail, OrderDetail.id_order == Order.id_order)
+            .join(Product, Product.id_product == OrderDetail.id_product)
+            .join(Client, Client.id_client == Order.id_client)
+            .join(Neighborhood, Neighborhood.id_neighborhood == Client.id_neighborhood)
+            .join(Zone, Zone.id_zone == Neighborhood.id_zone)
+            .join(TakerUser, TakerUser.id_user == Order.id_user_taker)
+            .join(TakerPerson, TakerPerson.id_person == TakerUser.id_person)
+            .outerjoin(Route, Route.id_route == Order.id_route)
+            .outerjoin(UserVehicle, UserVehicle.id_user_vehicle == Order.id_user_vehicle)
+            .outerjoin(UserRole, UserRole.id_user_role == UserVehicle.id_user_role)
+            .outerjoin(DriverUser, DriverUser.id_user == UserRole.id_user)
+            .outerjoin(DriverPerson, DriverPerson.id_person == DriverUser.id_person)
+            .where(Order.creation_datetime >= start, Order.creation_datetime < end)
+            .order_by(Order.creation_datetime, Order.id_order, Product.code)
         )
         return list(db.execute(stmt).all())
 
