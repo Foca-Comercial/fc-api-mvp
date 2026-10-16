@@ -8,6 +8,8 @@ Reglas:
   (settings.DEFAULT_SELLER_CODE). La asignación ocurre solo aquí: el pedido
   no se modifica.
 - Siigo recibe el código del vendedor como número ("01" -> 1).
+- Exportar (o reexportar) guarda un shift_closure por vendedor y día con
+  exported_siigo=True; reexportar actualiza esas filas.
 """
 
 from dataclasses import dataclass, field
@@ -35,6 +37,10 @@ from app.schemas.coreModule.shift_closure_schema import (
     ShiftClosureUpdate,
 )
 from app.services.base_service import BaseService
+from app.services.coreModule.closure_export import (
+    build_closure_workbook,
+    filename_for,
+)
 from app.utils.enums.order_state import OrderState
 from app.utils.exceptions.business_exceptions import (
     BusinessRuleViolationError,
@@ -168,6 +174,35 @@ class ShiftClosureService(
         return ShiftClosureSummary(
             closure_date=target_date, exported=exported, cards=cards, sellers=rows
         )
+
+    # ------------------------------------------------------------------
+    # Exportación a Siigo (.xlsx)
+    # ------------------------------------------------------------------
+    def export_day(self, db: Session, closure_date: date) -> tuple[str, bytes]:
+        """Genera el Excel del día y registra los cierres como exportados.
+
+        Devuelve (nombre del archivo, contenido). Se puede repetir: cada
+        exportación refleja los pedidos actuales y actualiza los cierres.
+        """
+        self._ensure_closable_date(closure_date)
+        sellers = self.consolidate(db, closure_date)
+        if not sellers:
+            raise BusinessRuleViolationError(
+                f"El {closure_date.strftime('%d/%m/%Y')} no tiene pedidos despachados "
+                "ni entregados para exportar.",
+                rule_code="NO_BILLABLE_ORDERS",
+            )
+
+        # El archivo se arma antes de escribir en la BD: si falla, no queda
+        # ningún cierre marcado como exportado.
+        content = build_closure_workbook(closure_date, sellers)
+        shift_closure_repository.save_exported(
+            db,
+            closure_date,
+            [(s.id_user_vehicle, s.orders_count, s.total_sales) for s in sellers],
+        )
+        db.commit()
+        return filename_for(closure_date), content
 
     # ------------------------------------------------------------------
     # Consolidación (la usan el resumen y la exportación)

@@ -12,6 +12,7 @@ colorama==0.4.6
 cryptography==50.0.2
 dnspython==2.9.0
 email-validator==2.3.0
+et_xmlfile==2.0.0
 fastapi==0.142.2
 google-auth==2.62.0
 google-auth-oauthlib==1.5.0
@@ -26,6 +27,7 @@ json5==0.15.0
 Mako==1.4.3
 MarkupSafe==3.0.4
 oauthlib==4.0.0
+openpyxl==3.1.5
 opentelemetry-api==1.45.1
 packaging==26.3
 pillow==12.3.0
