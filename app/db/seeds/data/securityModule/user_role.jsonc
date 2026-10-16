@@ -114,5 +114,10 @@
     {
         "id_user": 29,
         "id_role": 1
+    },
+    // VENDEDOR por defecto (empresa): recibe en el cierre los pedidos sin conductor
+    {
+        "id_user": 29,
+        "id_role": 3
     }
 ]

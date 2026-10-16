@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -28,5 +28,6 @@ class ShiftClosureUpdate(ShiftClosureBase):
 
 class ShiftClosureResponse(ShiftClosureBase):
     id_shift_closure: int
+    exported_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)

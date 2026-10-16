@@ -253,5 +253,11 @@
         "code": "76",
         "id_user_role": 9,
         "id_vehicle": 5
+    },
+    // Vendedor por defecto (código 01 = 1 en Siigo). id_user_role 30 = HIELO FOCA / VENDEDOR
+    {
+        "code": "01",
+        "id_user_role": 30,
+        "id_vehicle": 1
     }
 ]

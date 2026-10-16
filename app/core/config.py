@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # Meses que se conservan en la BD (incluido el vigente). Con 2: en octubre
     # se conservan octubre y septiembre; agosto y anteriores se pueden purgar.
     HISTORY_RETENTION_MONTHS: int = Field(2, ge=1)
+    # Código (user_vehicle.code) del vendedor al que el cierre asigna los
+    # pedidos despachados/entregados sin conductor. Siigo lo recibe como 1.
+    DEFAULT_SELLER_CODE: str = Field("01", min_length=2, max_length=2)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

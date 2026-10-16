@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -7,10 +7,12 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
     Numeric,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,6 +29,10 @@ class ShiftClosure(Base):
             "total_orders >= 0 AND total_sales >= 0", name="chk_shift_closure_totals"
         ),
         Index("idx_shift_closure_user_vehicle", "id_user_vehicle"),
+        # Un cierre por vendedor y día: reexportar actualiza la misma fila
+        UniqueConstraint(
+            "closure_date", "id_user_vehicle", name="uq_shift_closure_date_vehicle"
+        ),
     )
 
     id_shift_closure: Mapped[int] = mapped_column(
@@ -36,6 +42,9 @@ class ShiftClosure(Base):
     total_orders: Mapped[int] = mapped_column(Integer, nullable=False)
     total_sales: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     exported_siigo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    exported_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Claves Foraneas
     id_user_vehicle: Mapped[int] = mapped_column(
