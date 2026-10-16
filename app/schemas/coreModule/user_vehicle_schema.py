@@ -9,7 +9,8 @@ class UserVehicleBase(BaseModel):
         ...,
         min_length=2,
         max_length=2,
-        description="Código identificador (2 caracteres)",
+        pattern=r"^\d{2}$",
+        description="Código del vendedor: 2 dígitos (Siigo lo recibe como número)",
     )
     id_user_role: int = Field(..., gt=0, description="Usuario-rol (vendedor)")
     id_vehicle: int = Field(..., gt=0, description="Vehículo asignado")
@@ -26,6 +27,7 @@ class UserVehicleUpdate(UserVehicleBase):
 
 class UserVehicleResponse(UserVehicleBase):
     id_user_vehicle: int
+    code: str  # sin el patrón: no falla al listar códigos antiguos no numéricos
 
     model_config = ConfigDict(from_attributes=True)
 

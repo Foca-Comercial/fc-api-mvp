@@ -28,6 +28,9 @@ from app.schemas.coreModule.order_history_schema import OrderHistoryFilters
 from app.schemas.coreModule.order_schema import OrderCreate, OrderUpdate
 from app.utils.enums.order_state import OrderState
 
+# Estados que se facturan en el cierre del día
+BILLABLE_STATES = (OrderState.DISPATCHED, OrderState.DELIVERED)
+
 
 class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
     # Siguiente consecutivo del día (hora de Bogotá). Debe llamarse dentro de la
@@ -264,6 +267,61 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .outerjoin(DriverPerson, DriverPerson.id_person == DriverUser.id_person)
             .where(Order.creation_datetime >= start, Order.creation_datetime < end)
             .order_by(Order.creation_datetime, Order.id_order, Product.code)
+        )
+        return list(db.execute(stmt).all())
+
+    # ------------------------------------------------------------------
+    # Vista Cierre: pedidos facturables del día (despachados y entregados)
+    # ------------------------------------------------------------------
+    # Cantidad de pedidos del día por estado (todos los estados, para las cards)
+    def count_by_state_on_day(self, db: Session, day: date) -> dict[OrderState, int]:
+        stmt = (
+            select(Order.state, func.count(Order.id_order))
+            .where(on_bogota_day(Order.creation_datetime, day))
+            .group_by(Order.state)
+        )
+        return {state: count for state, count in db.execute(stmt).all()}
+
+    # Pedidos facturables del día por vendedor: {id_user_vehicle | None: cantidad}.
+    # La clave None agrupa los pedidos sin conductor asignado.
+    def count_billable_by_seller(self, db: Session, day: date) -> dict[int | None, int]:
+        stmt = (
+            select(Order.id_user_vehicle, func.count(Order.id_order))
+            .where(
+                on_bogota_day(Order.creation_datetime, day),
+                Order.state.in_(BILLABLE_STATES),
+            )
+            .group_by(Order.id_user_vehicle)
+        )
+        return {id_uv: count for id_uv, count in db.execute(stmt).all()}
+
+    # Renglones facturables del día agrupados por (vendedor, producto, precio).
+    # Un mismo producto vendido a precios distintos queda en renglones separados.
+    def get_billable_lines(self, db: Session, day: date) -> list[tuple]:
+        stmt = (
+            select(
+                Order.id_user_vehicle,
+                Product.id_product,
+                Product.code.label("product_code"),
+                Product.name.label("product_name"),
+                OrderDetail.unit_price,
+                func.sum(OrderDetail.cant).label("quantity"),
+                func.sum(OrderDetail.subtotal).label("subtotal"),
+            )
+            .join(OrderDetail, OrderDetail.id_order == Order.id_order)
+            .join(Product, Product.id_product == OrderDetail.id_product)
+            .where(
+                on_bogota_day(Order.creation_datetime, day),
+                Order.state.in_(BILLABLE_STATES),
+            )
+            .group_by(
+                Order.id_user_vehicle,
+                Product.id_product,
+                Product.code,
+                Product.name,
+                OrderDetail.unit_price,
+            )
+            .order_by(Product.code, OrderDetail.unit_price)
         )
         return list(db.execute(stmt).all())
 

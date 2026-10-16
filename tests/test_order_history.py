@@ -54,7 +54,7 @@ def test_lista_los_pedidos_con_sus_datos_y_totales(client, create_order, data):
     assert row["route_name"] is None
     assert row["total_quantity"] == 3
     assert set(row["product_codes"].split(", ")) == {"Z91", "Z92"}
-    assert row["driver_code"] == "Z9"
+    assert row["driver_code"] == "99"
     assert row["driver_name"] == "Carlos Conductor"
     assert row["state"] == "PENDING"
 

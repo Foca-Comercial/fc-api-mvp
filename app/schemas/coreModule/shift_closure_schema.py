@@ -31,3 +31,59 @@ class ShiftClosureResponse(ShiftClosureBase):
     exported_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# -----------------------------------------------------
+# Vista Cierre: resumen del día
+# -----------------------------------------------------
+class ClosureProduct(BaseModel):
+    product_code: str
+    product_name: str
+    quantity: int = Field(
+        ..., description="Unidades del día, sumando todos los precios"
+    )
+
+
+class ClosureSellerRow(BaseModel):
+    id_user_vehicle: int
+    seller_code: int = Field(
+        ..., description="Código del vendedor sin ceros a la izquierda (Siigo)"
+    )
+    seller_name: str
+    products: list[ClosureProduct]
+    total_quantity: int
+    orders_count: int
+    unassigned_orders: int = Field(
+        0,
+        description="Pedidos sin conductor sumados a este vendedor (solo el de "
+        "por defecto)",
+    )
+    total_sales: Decimal
+    exported_at: datetime | None = Field(
+        None, description="Última exportación a Siigo de este vendedor y día"
+    )
+    export_outdated: bool = Field(
+        False,
+        description="Se exportó, pero los pedidos o el total cambiaron después",
+    )
+
+
+class ClosureCards(BaseModel):
+    total_orders: int = Field(..., description="Pedidos del día en cualquier estado")
+    pending: int
+    dispatched: int
+    delivered: int
+    cancelled: int
+    sellers_count: int = Field(..., description="Vendedores con pedidos facturables")
+    total_income: Decimal = Field(
+        ..., description="Total facturable: despachados + entregados"
+    )
+
+
+class ShiftClosureSummary(BaseModel):
+    closure_date: date
+    exported: bool = Field(
+        ..., description="Todos los vendedores exportados y sin cambios posteriores"
+    )
+    cards: ClosureCards
+    sellers: list[ClosureSellerRow]

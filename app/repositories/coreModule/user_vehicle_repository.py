@@ -1,3 +1,5 @@
+from collections.abc import Collection
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -42,6 +44,35 @@ class RepositoryUserVehicle(
 
         stmt = stmt.order_by(Person.name.asc(), Person.last_name.asc())
         return list(db.execute(stmt).all())
+
+    # Vista Cierre: código y nombre de los vendedores indicados
+    # {id_user_vehicle: (code, seller_name)}. No filtra inactivos: un pedido ya
+    # despachado se factura aunque el vendedor se haya desactivado después.
+    def get_sellers(
+        self, db: Session, ids: Collection[int]
+    ) -> dict[int, tuple[str, str]]:
+        if not ids:
+            return {}
+        stmt = (
+            select(
+                UserVehicle.id_user_vehicle,
+                UserVehicle.code,
+                (Person.name + " " + Person.last_name).label("seller_name"),
+            )
+            .join(UserRole, UserVehicle.id_user_role == UserRole.id_user_role)
+            .join(User, UserRole.id_user == User.id_user)
+            .join(Person, User.id_person == Person.id_person)
+            .where(UserVehicle.id_user_vehicle.in_(ids))
+        )
+        return {
+            row.id_user_vehicle: (row.code, row.seller_name)
+            for row in db.execute(stmt).all()
+        }
+
+    def get_id_by_code(self, db: Session, code: str) -> int | None:
+        return db.scalar(
+            select(UserVehicle.id_user_vehicle).where(UserVehicle.code == code)
+        )
 
 
 # Intancia del repositorio inyectando el modelo ORM

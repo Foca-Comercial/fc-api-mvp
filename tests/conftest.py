@@ -47,6 +47,7 @@ from sqlalchemy.orm import Session
 
 from alembic import command
 from app.api.dependencies import CurrentUser, get_current_user
+from app.core.config import settings
 from app.db.database import engine, get_db
 from app.main import app
 from app.models.coreModule.client import Client
@@ -125,7 +126,7 @@ def data(db: Session):
     db.flush()
 
     user_vehicle = UserVehicle(
-        code="Z9", id_user_role=driver_role.id_user_role, id_vehicle=vehicle.id_vehicle
+        code="99", id_user_role=driver_role.id_user_role, id_vehicle=vehicle.id_vehicle
     )
     client = Client(
         name="CLIENTE REGISTRADO",
@@ -186,6 +187,31 @@ def create_order(client: TestClient, data):
         return response.json()
 
     return _create
+
+
+@pytest.fixture()
+def default_seller(db: Session, data, monkeypatch):
+    """Vendedor por defecto del cierre (código "09" -> Siigo 9). Recibe los
+    pedidos despachados sin conductor."""
+    role = Role(name="ROL_TEST_VENDEDOR")
+    person = Person(name="Hielo", last_name="Foca")
+    db.add_all([role, person])
+    db.flush()
+    user = User(username="vendedor.test", password="x", id_person=person.id_person)
+    db.add(user)
+    db.flush()
+    user_role = UserRole(id_user=user.id_user, id_role=role.id_role)
+    db.add(user_role)
+    db.flush()
+    seller = UserVehicle(
+        code="09",
+        id_user_role=user_role.id_user_role,
+        id_vehicle=data.user_vehicle.id_vehicle,
+    )
+    db.add(seller)
+    db.commit()
+    monkeypatch.setattr(settings, "DEFAULT_SELLER_CODE", "09")
+    return seller
 
 
 @pytest.fixture()

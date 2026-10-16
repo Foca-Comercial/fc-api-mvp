@@ -25,7 +25,7 @@ def test_detalle_de_pedido_con_conductor(client, create_order, data):
     response = client.get(f"{API}/orders/{order['id_order']}/details")
 
     assert response.status_code == 200, response.text
-    assert response.json()["driver_code"] == "Z9"
+    assert response.json()["driver_code"] == "99"
     assert response.json()["driver_name"] == "Carlos Conductor"
 
 

@@ -53,7 +53,9 @@ def test_exporta_una_fila_por_producto_y_registra_la_bitacora(
     assert body["month"] == period
     assert body["status"] == "EXPORTED"
     assert (body["orders_count"], body["rows_count"]) == (2, 3)
-    assert Decimal(body["total_sales"]) == Decimal(first["order_total"])  # sin cancelado
+    assert Decimal(body["total_sales"]) == Decimal(
+        first["order_total"]
+    )  # sin cancelado
     assert body["id_user_exported"] == data.taker.id_user
 
     sheet = writer.sheets[(SHEET_ID, period)]
@@ -66,7 +68,7 @@ def test_exporta_una_fila_por_producto_y_registra_la_bitacora(
     assert row[0] == today_bogota().isoformat()
     assert row[3] == "CLIENTE REGISTRADO"
     assert row[6] == "ZONA TEST"
-    assert row[8] == "Z9 - Carlos Conductor"
+    assert row[8] == "99 - Carlos Conductor"
     assert row[9] == "Ana Gestora"
     assert row[10] == "Pendiente"
     assert (row[15], row[16], row[17]) == (2, 3000.0, 6000.0)
@@ -146,7 +148,7 @@ def test_mes_ya_purgado(admin, writer, period, db, create_order):
             sheet_title=period,
             orders_count=1,
             rows_count=1,
-            total_sales=Decimal("1"),
+            total_sales=Decimal(1),
             exported_at=datetime.now(UTC),
         )
     )
