@@ -218,3 +218,50 @@ def test_solo_admin_purga(client, writer):
     period = f"{add_months(first_retained_month(), -1):%Y-%m}"
 
     assert _purge(client, period).status_code == 403
+
+
+# --- Bloqueo por cierres pendientes (C4) --------------------------------------------
+
+
+def _dispatch(client, order: dict) -> None:
+    response = client.post(f"{API}/orders/{order['id_order']}/dispatch")
+    assert response.status_code == 200, response.text
+
+
+def _export_closure(client, day) -> None:
+    response = client.post(f"{API}/shifts_closures/{day}/export")
+    assert response.status_code == 200, response.text
+
+
+def test_no_se_purga_un_mes_con_dias_sin_cierre(admin, writer, db, old, default_seller):
+    _dispatch(admin, old.old_orders[0])
+    orders_before = _count(db, Order)
+
+    response = _purge(admin, old.period)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "MONTH_NOT_CLOSED"
+    assert old.month.replace(day=10).strftime("%d/%m") in response.json()["detail"]
+    assert writer.calls == 0  # ni siquiera se exporta a Sheets
+    assert _count(db, Order) == orders_before
+
+
+def test_con_el_cierre_exportado_se_puede_purgar(admin, writer, old, default_seller):
+    _dispatch(admin, old.old_orders[0])
+    _export_closure(admin, old.month.replace(day=10))
+
+    response = _purge(admin, old.period)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["deleted_orders"] == 3
+
+
+def test_cierre_desactualizado_tambien_bloquea(admin, writer, old, default_seller):
+    _dispatch(admin, old.old_orders[0])
+    _export_closure(admin, old.month.replace(day=10))
+    _dispatch(admin, old.old_orders[1])  # despachado después de exportar
+
+    response = _purge(admin, old.period)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "MONTH_NOT_CLOSED"

@@ -14,6 +14,9 @@ from app.repositories.coreModule.archive_repository import (
     purge_repository,
 )
 from app.repositories.coreModule.order_repository import order_repository
+from app.repositories.coreModule.shift_closure_repository import (
+    shift_closure_repository,
+)
 from app.schemas.coreModule.archive_schema import (
     ArchiveSpreadsheetResponse,
     MonthlyArchiveResponse,
@@ -25,6 +28,7 @@ from app.services.coreModule.archive_export import MONEY_COLUMNS, build_export_t
 from app.services.coreModule.sheets_writer import SERVICE, SheetsWriter
 from app.utils.enums.archive_status import ArchiveStatus
 from app.utils.exceptions.business_exceptions import (
+    BusinessRuleViolationError,
     BusinessValidationError,
     ConflictError,
     ExternalServiceError,
@@ -104,6 +108,7 @@ class ArchiveService:
             )
 
         lock_archive(db)
+        self._ensure_month_closed(db, archive_month)
         archive, order_ids = self._export_with_ids(
             db, archive_month=archive_month, writer=writer
         )
@@ -136,6 +141,24 @@ class ArchiveService:
             deleted_temporary_clients=deleted_clients,
             deleted_order_counters=deleted_counters,
             deleted_expired_sessions=deleted_sessions,
+        )
+
+    @staticmethod
+    def _ensure_month_closed(db: Session, archive_month: date) -> None:
+        """No se purga un mes con días facturables sin exportar a Siigo: al
+        borrar los pedidos ya no se podría generar su cierre."""
+        days = shift_closure_repository.get_unclosed_days(db, archive_month)
+        if not days:
+            return
+        shown = ", ".join(day.strftime("%d/%m") for day in days[:10])
+        if len(days) > 10:
+            shown += f" y {len(days) - 10} más"
+        raise BusinessRuleViolationError(
+            f"No se puede purgar {month_label(archive_month)}: {len(days)} día(s) "
+            f"tienen pedidos despachados o entregados sin cierre exportado (o con "
+            f"cambios posteriores a la exportación): {shown}. Exporta el cierre de "
+            "esos días en la vista Cierre y vuelve a intentar.",
+            rule_code="MONTH_NOT_CLOSED",
         )
 
     def _export(self, db: Session, *, archive_month: date, writer: SheetsWriter):
