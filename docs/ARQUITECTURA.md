@@ -24,6 +24,8 @@ adaptada a las convenciones idiomáticas de Python y FastAPI.
 | Generación de PDF | ReportLab |
 | Config / variables de entorno | `pydantic-settings` (lee `.env` desde la raíz del proyecto) |
 | Seeds | Archivos `.jsonc` leídos con `json5` |
+| Archivado mensual | Google Sheets vía `gspread` + `google-auth` (cuenta de servicio) |
+| Exportación a Siigo | Excel `.xlsx` generado con `openpyxl` |
 
 ---
 
@@ -44,7 +46,7 @@ app/
 ├── core/
 │   ├── config.py                 # Settings (pydantic-settings), lee .env
 │   ├── security.py               # JWT: create/decode access token, refresh token helpers
-│   ├── timezone.py               # BOGOTA_TZ y today_bogota(): fuente única de hora/fecha local
+│   ├── timezone.py               # BOGOTA_TZ, today_bogota() y rangos de día/mes en Bogotá
 │   └── strategies/
 │       └── deletion_strategy.py  # SoftDeleteStrategy / HardDeleteStrategy
 ├── db/
@@ -59,7 +61,8 @@ app/
 ├── models/                       # Entidades SQLAlchemy, agrupadas por módulo de dominio
 │   ├── securityModule/           # Person, User, Role, UserRole, UserSession
 │   ├── coreModule/               # Client, Product, SpecialCustomerPrice, Order,
-│   │                              # OrderDetail, ShiftClosure, UserVehicle, ClientRoute
+│   │                              # OrderDetail, ShiftClosure, UserVehicle, ClientRoute,
+│   │                              # DailyOrderCounter, MonthlyArchive, ArchiveSpreadsheet
 │   └── parametersModule/         # Zone, Neighborhood, Route, Vehicle
 ├── schemas/                      # DTOs Pydantic, mismo agrupamiento que models/
 │   ├── auth/                     # Token, RefreshRequest, SessionCreate/Update
@@ -68,18 +71,22 @@ app/
 │   └── parametersModule/
 ├── repositories/                  # Acceso a datos (capa Data)
 │   ├── base_repository.py        # CRUD genérico + helpers reutilizables
+│   ├── time_filters.py           # on_bogota_day / between_bogota_dates / on_db_today
 │   └── <mismos módulos que models/>
 ├── services/                      # Lógica de negocio (capa Business)
 │   ├── base_service.py           # CRUD genérico + hooks de validación declarativa
 │   ├── validation.py             # UniqueRule, ReferenceRule, UniqueTogether
 │   ├── auth/                     # AuthService (login/refresh/logout)
 │   ├── pdf/                      # PdfService (comprobantes de despacho) + assets/logo
-│   └── <mismos módulos que models/>
+│   └── <mismos módulos que models/>   # coreModule incluye además:
+│       # archive_export.py (tabla del mes para Sheets), sheets_writer.py (SheetsWriter /
+│       # GoogleSheetsWriter) y closure_export.py (Excel del cierre para Siigo)
 └── utils/
     ├── schema_types.py               # UpperText / LowerText (strip + cambio de caja)
     ├── exceptions/
     │   └── business_exceptions.py    # Jerarquía BusinessError
     ├── enums/                        # Enums centralizados (los modelos solo los importan)
+    │   ├── archive_status.py         # ArchiveStatus (EXPORTED/PURGED)
     │   ├── day_week.py               # DayWeek (1 = lunes ... 7 = domingo)
     │   ├── delete_type.py            # DeletionType (SOFT/HARD)
     │   └── order_state.py            # OrderState
@@ -91,7 +98,7 @@ docs/
 └── ARQUITECTURA.md                   # Este documento
 tests/                                # pytest (ver sección 11)
 ├── conftest.py                       # BD de pruebas, migraciones, datos base, overrides
-├── helpers.py                        # API, item()
+├── helpers.py                        # API, item(), FakeSheetsWriter
 └── test_*.py
 requirements.txt                      # Dependencias de la API (versiones fijadas)
 requirements-dev.txt                  # + pytest, httpx
@@ -119,6 +126,9 @@ suyo con estas variables:
 | `ALGORITHM` | No | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | No | `60` |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | No | `30` |
+| `GOOGLE_CREDENTIALS_FILE` | Solo para exportar a Sheets | — (ruta al JSON de la cuenta de servicio de Google) |
+| `HISTORY_RETENTION_MONTHS` | No | `2` (meses que se conservan en la BD, incluido el vigente) |
+| `DEFAULT_SELLER_CODE` | No | `01` (`user_vehicle.code` que recibe en el cierre los pedidos sin conductor) |
 
 ---
 
@@ -319,19 +329,30 @@ ambiguo, no se sabe a qué fecha corresponde).
 | Hora actual de Bogotá (Python) | `datetime.now(BOGOTA_TZ).time()` |
 | Fecha de hoy en Bogotá (Python) | `today_bogota()` (p. ej. `Query(default_factory=today_bogota)`) |
 | Mostrar un `TIMESTAMPTZ` leído de la BD | `valor.astimezone(BOGOTA_TZ)` antes de formatear |
-| Agrupar/filtrar por fecha u hora local en SQL | `func.timezone(BOGOTA_TZ.key, columna)` y luego `func.date(...)` / `func.to_char(...)` |
+| **Filtrar** por día/rango local en SQL | `on_bogota_day(col, día)` / `between_bogota_dates(col, desde, hasta)` (`repositories/time_filters.py`) |
+| Filtrar por "hoy" según la BD (junto al consecutivo) | `on_db_today(col)` |
+| **Mostrar o agrupar** por fecha u hora local en SQL | `func.timezone(BOGOTA_TZ.key, columna)` y luego `cast(..., Date)` / `func.to_char(...)` |
 
 Nunca `datetime.now()` ni `date.today()` sin zona — dependen de la zona horaria del servidor
 (en producción suele ser UTC). Del mismo modo, `func.date(columna_timestamptz)` sin
 convertir usa la zona de la **sesión de PostgreSQL**: un pedido creado después de las 7 p. m.
 de Bogotá caería en el día siguiente si la BD está en UTC.
+**Filtrar siempre por rango, nunca aplicando funciones a la columna:** los helpers de
+`time_filters.py` traducen el día de Bogotá a un rango de instantes
+(`col >= inicio AND col < fin`), así PostgreSQL usa el índice
+`idx_sale_order_creation_datetime`. Un `WHERE date(timezone(..., col)) = día` recorre la
+tabla completa. La conversión con `func.timezone` queda solo para el `SELECT`/`GROUP BY`;
+al agrupar por esa expresión se agrupa por su **alias** (`.group_by("order_day")`), porque
+repetir la expresión duplica el parámetro de la zona y PostgreSQL no la reconoce como la
+misma.
+
 Requiere el paquete `tzdata` instalado (`zoneinfo` de la librería estándar no trae los datos
 de zonas horarias en Windows por defecto).
 
 ### Enums — dos patrones distintos según cómo se persiste el valor
 
-Todos los enums viven centralizados en **`app/utils/enums/`** (`day_week.py`,
-`delete_type.py`, `order_state.py`); los modelos y schemas los importan desde ahí.
+Todos los enums viven centralizados en **`app/utils/enums/`** (`archive_status.py`,
+`day_week.py`, `delete_type.py`, `order_state.py`); los modelos y schemas los importan desde ahí.
 
 **A) Enum de texto** (ej. `OrderState`):
 ```python
@@ -383,7 +404,7 @@ con un `CHECK` que exige al menos un día y solo valores 1..7. En el schema el c
 `list[DayWeek]` (`min_length=1`), se normaliza sin repetidos y en orden (`[4, 1, 1]` →
 `[1, 4]`) y se serializa como enteros. Al editar se reemplaza la lista completa (SQLAlchemy
 no detecta mutaciones en sitio de un `ARRAY`). Para buscar las rutas de un día:
-`Route.days_week.any(dia)`.
+`dia == any_(Route.days_week)` (`ARRAY.any()` está obsoleto desde SQLAlchemy 2.1).
 
 **Alembic y tipos personalizados:** cuando una columna usa un tipo con argumentos
 obligatorios (`IntEnumType(DayWeek)`), Alembic no genera automáticamente el argumento al
@@ -479,6 +500,9 @@ siendo la garantía final.
   Si la secuencia no arranca en 1 (tabla vaciada sin reiniciar la identidad), la carga falla
   con un mensaje que indica usar `TRUNCATE ... RESTART IDENTITY`.
 - **Todo o nada:** un único `commit()` al final; cualquier error hace `rollback()`.
+- **Vendedor por defecto:** los seeds asignan a "HIELO FOCA" (usuario `admin`) el rol
+  `VENDEDOR` y un `user_vehicle` con código `01` (ver Vista Cierre). En una BD que ya tenía
+  datos hay que crearlo a mano (`POST /user_roles` + `POST /user_vehicles`).
 
 ---
 
@@ -586,9 +610,12 @@ router = SecuredRouter(prefix="/roles", tags=["Roles"])
 @router.get("/")                              # sin roles= → requiere ADMINISTRADOR (por defecto)
 def get_all_roles(...): ...
 
-@router.post("/", roles=["ADMINISTRADOR, VENDEDOR"])  # ADMINISTRADOR, VENDEDOR
+@router.post("/", roles=["GESTOR_COMERCIAL"])  # ADMINISTRADOR o GESTOR_COMERCIAL
 def create_role(...): ...
 ```
+
+Roles del sistema: `ADMINISTRADOR`, `GESTOR_COMERCIAL` (opera las vistas de Pedidos,
+Rutas, Histórico y Cierre) y `VENDEDOR` (el domiciliario; hoy no usa la API directamente).
 
 `ADMINISTRADOR` siempre hace bypass total, sin importar `roles=[...]`. Sin `roles=[...]`
 declarado, el endpoint exige `ADMINISTRADOR` exclusivamente (comportamiento seguro por
@@ -616,7 +643,10 @@ bcrypt actualmente). El hasheo ocurre en la capa `services` (`_before_create` de
 Excepciones de negocio desacopladas de HTTP (no conocen status codes):
 `EntityNotFoundError`, `BusinessValidationError`, `ConflictError`,
 `BusinessRuleViolationError`, `UnauthorizedError`, `ForbiddenError`, `ExternalServiceError`.
-Cada una trae `.message`, `.code`, `.field` opcional.
+Cada una trae `.message`, `.code`, `.field` opcional. Firmas a tener en cuenta:
+`BusinessRuleViolationError(message, rule_code=...)` (no `code=`),
+`EntityNotFoundError(entity_type, id)` y `ExternalServiceError(service_name, message)`
+(→ 502, p. ej. si Google Sheets falla).
 
 ### Traducción a HTTP (`api/exception_handlers.py`)
 
@@ -673,7 +703,18 @@ ante cualquier excepción no capturada que suba hasta el router sin commit expl�
   `POST /clients`.
 - `POST /orders/existing-client` (`create_for_existing_client`): recibe solo `id_client`
   (no se permite editar datos del cliente desde este flujo — eso es responsabilidad de
-  `PATCH /clients/{id}`, por separado).
+  `PATCH /clients/{id}`, por separado). Solo acepta clientes **registrados**
+  (`is_registered=True`); un temporal responde 422 `CLIENT_NOT_REGISTERED`.
+- `POST /orders/routes/{id_route}`: pedidos en lote desde una ruta (ver "Pedidos por
+  ruta").
+
+**`purchase_order` — consecutivo diario:** cada pedido recibe `"001"`, `"002"`, … según el
+día de Bogotá en que se crea; al día siguiente vuelve a `"001"` y los días anteriores
+conservan sus números. El contador vive en `daily_order_counter` (una fila por día) y se
+incrementa con `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` dentro de la misma
+transacción del pedido: dos pedidos simultáneos nunca reciben el mismo número y, si el
+pedido falla, el incremento se revierte. Usa `now()` de la BD, el mismo instante que
+recibe `creation_datetime`. Máximo 999 por día (`DAILY_ORDER_LIMIT`).
 
 Ambos validan referencias (barrio/cliente, productos) **antes** de crear nada, calculan
 `subtotal = cant * unit_price` por cada item (nunca se confía en un subtotal enviado por el
@@ -731,7 +772,9 @@ pedido sin una llamada por producto.
 ### Búsqueda de clientes existentes
 
 `GET /clients/search?name=...` — búsqueda parcial case-insensitive (`ILIKE`), para precargar
-datos de un cliente existente en el flujo de registro de pedido.
+datos de un cliente existente en el flujo de registro de pedido. Solo devuelve clientes
+**registrados** y activos: los temporales (`is_registered=False`, creados desde
+`/orders/new-client`) no aparecen.
 
 ### Consultas de pedidos para la UI
 
@@ -762,13 +805,121 @@ Roles: `GESTOR_COMERCIAL` (y `ADMINISTRADOR`). Desactivar/eliminar una ruta
   ver sección 4).
 - **`GET /routes/{id}/clients`**: clientes asignados, con teléfono, dirección, barrio, zona
   y estado.
-- **`POST /routes/{id}/clients`** `{"id_client": ...}`: asigna un cliente (debe existir y
-  estar activo; 409 si ya está asignado). Se permite aunque la ruta esté inactiva.
+- **`GET /routes/{id}/available-clients`**: selector de clientes para asignar —
+  registrados, activos y aún no asignados a esa ruta.
+- **`POST /routes/{id}/clients`** `{"id_client": ...}`: asigna un cliente (debe existir,
+  estar activo y ser **registrado**: 422 `CLIENT_NOT_REGISTERED`; 409 si ya está asignado).
+  Se permite aunque la ruta esté inactiva.
 - **`DELETE /routes/{id}/clients/{id_client}`**: quita la asignación (borra la fila de
   `client_route`; el cliente no se toca). 404 si no estaba asignado.
 
 El CRUD genérico `/client_routes` se mantiene solo para `ADMINISTRADOR`; la vista usa los
 endpoints anidados bajo `/routes/{id}/clients`.
+
+### Pedidos por ruta
+
+Flujo plantilla → formulario → POST (`GESTOR_COMERCIAL`):
+
+1. **`GET /orders/routes-of-day?target_date=`**: rutas activas que salen ese día de la
+   semana, con `clients_count` y cuántos pedidos de ese día salieron de cada una.
+2. **`GET /orders/routes/{id}/template`**: precarga del formulario — productos del
+   catálogo y, por cliente de la ruta (registrado y activo), el precio que le aplica a cada
+   producto (`is_special` si es precio pactado) y `existing_order_id` si ya tiene pedido de
+   hoy desde esa ruta.
+3. **`POST /orders/routes/{id}`**: crea en **una sola transacción** los pedidos de los
+   clientes que vienen con productos (todo o nada). Bloquea la ruta (`FOR UPDATE`) para que
+   dos gestores no la generen dos veces. Rechaza ruta inactiva (`ROUTE_INACTIVE`), clientes
+   repetidos (`DUPLICATE_CLIENT`), clientes fuera de la ruta (`CLIENT_NOT_IN_ROUTE`) y
+   clientes que ya tienen pedido de hoy desde la ruta (409 `ROUTE_ORDER_EXISTS`). Los
+   errores de renglón indican el cliente. Cada pedido guarda `id_route` (FK opcional en
+   `sale_order`) y recibe su consecutivo diario.
+
+### Vista Histórico
+
+**`GET /orders/history`** (`GESTOR_COMERCIAL`): listado paginado de pedidos, del más
+reciente al más antiguo.
+
+- Filtros: `date_from` / `date_to` (por defecto, del 1 del mes anterior a hoy: lo que
+  retiene la BD; ambos extremos incluidos; 422 `INVALID_DATE_RANGE` si están invertidos),
+  `state`, `id_route`, `id_user_vehicle` y `search` (nombre del cliente o N.° de pedido
+  exacto). Paginación `page` / `page_size` (1–200).
+- Cada fila: fecha y hora (Bogotá), N.° de pedido, cliente, zona, ruta, productos y
+  cantidad, total, conductor y estado.
+- Respuesta con `total`, `pages` y `total_sales` del filtro completo (sin cancelados).
+- Los productos se agregan en una subconsulta por pedido, así la paginación es sobre
+  pedidos y no sobre renglones de detalle.
+
+### Vista Cierre — factura global por vendedor y exportación a Siigo
+
+El cierre del día consolida los pedidos **despachados y entregados** de un día (el de su
+creación, en Bogotá) en una factura global por vendedor (`user_vehicle`). Reglas:
+
+- `PENDING` y `CANCELLED` no se facturan; solo aparecen en las cards.
+- Los pedidos **sin conductor** se suman al vendedor por defecto
+  (`DEFAULT_SELLER_CODE`, `"01"`). La asignación ocurre solo en el cierre: el pedido no se
+  modifica. Si hay pedidos sin conductor y ese vendedor no existe → 422
+  `DEFAULT_SELLER_MISSING`.
+- Siigo recibe el código del vendedor como **número** (`"01"` → `1`), por eso
+  `user_vehicle.code` exige 2 dígitos al crear/editar (`^\d{2}$`); un código antiguo no
+  numérico responde 422 `INVALID_SELLER_CODE` en el cierre.
+- No se puede cerrar una fecha futura (422 `INVALID_CLOSURE_DATE`).
+
+Endpoints (`GESTOR_COMERCIAL`), bajo `/shifts_closures`:
+
+- **`GET /shifts_closures/summary?target_date=`**: cards (total del día, pendientes,
+  despachados, entregados, cancelados, vendedores e ingreso facturable) y una fila por
+  vendedor, ordenada por código: productos con cantidad (sumando sus distintos precios),
+  cantidad total, pedidos, `unassigned_orders` (pedidos sin conductor sumados al vendedor
+  por defecto) y total vendido. Por fila, `exported_at` y `export_outdated` (se exportó,
+  pero los pedidos o el total cambiaron después); `exported` resume todo el día.
+- **`POST /shifts_closures/{fecha}/export`**: descarga `cierre_AAAA-MM-DD.xlsx`
+  (`closure_export.py`). Columnas `Fecha | Cód. vendedor | Vendedor | Cód. producto |
+  Producto | Cantidad | Precio unit. | Subtotal`, un renglón por vendedor + producto +
+  precio, una fila "Total vendedor" por vendedor y "TOTAL DEL DÍA". Formato provisional
+  hasta que Siigo defina su plantilla. 422 `NO_BILLABLE_ORDERS` si el día no tiene pedidos
+  facturables.
+
+**Cerrar el día = exportarlo.** No hay otra acción que escriba en `shift_closure`: la
+exportación hace un *upsert* (`ON CONFLICT` sobre `uq_shift_closure_date_vehicle`) de un
+cierre por vendedor y día con `total_orders`, `total_sales`, `exported_siigo=True` y
+`exported_at`, y elimina los cierres de ese día de vendedores que ya no tienen pedidos
+facturables (p. ej. se les reasignó el pedido). Reexportar está permitido y refleja los
+pedidos actuales. El Excel se genera **antes** de escribir en la BD: si falla, no queda
+nada marcado como exportado. El CRUD `/shifts_closures` (`GET /` y `GET /{id}`) es de solo
+lectura para `ADMINISTRADOR`.
+
+La consolidación (`ShiftClosureService.consolidate`) es una sola y la usan el resumen y la
+exportación: renglones agrupados por (vendedor, producto, precio) en SQL y fusión en Python
+de los pedidos sin conductor con los propios del vendedor por defecto.
+
+### Archivado mensual — Google Sheets y purga
+
+Para que la BD no crezca sin límite, se conservan `HISTORY_RETENTION_MONTHS` meses (2: el
+vigente y el anterior). Los meses más viejos se exportan a Google Sheets y se borran.
+Todo es manual y solo de `ADMINISTRADOR` (`/archive`):
+
+- **Configuración:** un spreadsheet por año (`archive_spreadsheet`),
+  `PUT /archive/spreadsheets/{año}` con el ID o la URL; `GET /archive/spreadsheets`. La API
+  escribe con una **cuenta de servicio** (`GOOGLE_CREDENTIALS_FILE`); el spreadsheet debe
+  estar compartido como editor con su `client_email`.
+- **`POST /archive/{AAAA-MM}/export`**: escribe (o reescribe) la pestaña del mes con **una
+  fila por producto vendido** de todos los pedidos del mes, en cualquier estado
+  (`archive_export.py`), verifica leyendo de vuelta cuántas filas quedaron y registra la
+  bitácora `monthly_archive` como `EXPORTED`. Los pedidos no se borran.
+- **`POST /archive/{AAAA-MM}/purge`**: solo meses fuera de la retención
+  (`MONTH_WITHIN_RETENTION`). Reexporta el estado final, verifica y, en **la misma
+  transacción**, borra exactamente los pedidos exportados (sus detalles caen por
+  `ON DELETE CASCADE`), los clientes temporales que quedaron sin pedidos, los contadores
+  diarios viejos y las sesiones vencidas; la bitácora pasa a `PURGED`. Si Google o la
+  verificación fallan, no se borra nada (502). Un mes con días facturables **sin cierre
+  exportado o con cambios posteriores a la exportación** se rechaza con 422
+  `MONTH_NOT_CLOSED` (lista los días), porque sin los pedidos ya no se podría generar su
+  cierre. Los `shift_closure` no se borran: quedan como registro de lo enviado a Siigo.
+- **`GET /archive/`**: bitácora de meses exportados y purgados.
+
+Exportación y purga se serializan con un `pg_advisory_xact_lock`: una a la vez. El servicio
+depende del protocolo `SheetsWriter`, inyectado con `Depends(get_sheets_writer)`; en los
+tests se reemplaza por `FakeSheetsWriter` y nunca se llama a Google.
 
 ### Ciclo de vida del pedido — máquina de estados
 
@@ -833,28 +984,33 @@ Cómo ejecutarlas: ver `README.md`.
   `rollback()` ante error del `get_db` real.
 - **Autenticación:** `get_current_user` se reemplaza por un usuario `GESTOR_COMERCIAL`;
   los flujos se prueban sin pasar por JWT.
-- **Cobertura inicial:** registro de pedidos (cliente nuevo/existente, totales, productos
+- **Fixtures** (`conftest.py`): `db`, `data` (zona, barrio, 3 productos, cliente registrado,
+  gestor y conductor con código `99`), `client` (GESTOR), `admin` (ADMINISTRADOR),
+  `create_order`, `writer` (`FakeSheetsWriter`) y `default_seller` (vendedor por defecto
+  `09`, con `DEFAULT_SELLER_CODE` parcheado).
+- **Cobertura:** registro de pedidos (cliente nuevo/existente, totales, productos
   repetidos o inexistentes), máquina de estados (dispatch/deliver), `PATCH` de conductor,
   `sync_items`, detalle y PDF sin conductor, dashboards por estado, día y hora de Bogotá,
   endpoints retirados (`DELETE /orders`, escritura en `/orders_details`) y
-  `BaseRepository.update` sobre objetos expirados — incluye la regresión de cada bug
-  corregido.
+  `BaseRepository.update` sobre objetos expirados, rutas y pedidos por ruta, consecutivo
+  diario, filtros por rango de fechas, histórico, archivado (exportación, verificación y
+  purga) y cierre (resumen, Excel, reexportación y bloqueo de la purga) — incluye la
+  regresión de cada bug corregido.
 
 ---
 
 ## 12. Pendientes / Roadmap
 
-- **Cierre de turno (`ShiftClosure`)**: hoy existen el modelo, schema, repositorio, servicio
-  y router con **CRUD genérico** (solo `ADMINISTRADOR`). Falta el endpoint de acción que
-  agregue los pedidos del día de un conductor/vehículo y genere el registro de cierre — no
-  es un `POST` de creación directa genérico.
+- **Plantilla definitiva de Siigo**: el Excel del cierre usa un formato provisional; ajustar
+  `closure_export.py` cuando Siigo defina columnas y códigos.
 - **Cancelación de pedido**: no existe aún un endpoint `CANCELLED` explícito con sus propias
   reglas de transición.
-- **Limpieza de clientes no registrados** (`is_registered=False` sin pedidos asociados).
 - **Refresh token en cookie `httpOnly`**: hoy se devuelve en el body del JSON (cómodo para
   pruebas en Thunder Client); al conectar el frontend real, migrar a cookie `httpOnly` +
   `Secure`, configurar CORS con `allow_credentials=True` y orígenes explícitos, decidir
   `SameSite` según si frontend/backend comparten dominio (detalle en el `README.md`).
+  En esa configuración de CORS, exponer `Content-Disposition` (`expose_headers`) para que
+  el frontend lea el nombre de los archivos descargados (Excel del cierre, PDF).
 - **Unificar formato de error 422 de Pydantic** con el formato uniforme de `BusinessError`
   (o resolverlo del lado del frontend con un segundo handler).
 - **Rol de domiciliario operando sus propios pedidos** (marcar entrega desde app móvil).
@@ -899,9 +1055,15 @@ Cómo ejecutarlas: ver `README.md`.
 11. Toda operación que valide el estado actual de un registro antes de cambiarlo (máquina
     de estados, sincronizaciones) lo lee con `get_for_update()` en el service, no con
     `get()`.
-12. Rutas literales (`/catalog`, `/search`, `/dashboard-summary`, `/dispatched-summary`)
+12. Rutas literales (`/catalog`, `/search`, `/dashboard-summary`, `/history`, `/summary`)
     siempre declaradas antes que rutas con parámetro de posición equivalente (`/{id}`) en el mismo archivo de router
     — el *routing* de FastAPI/Starlette evalúa en orden y se queda con la primera
     coincidencia.
 13. Todo flujo nuevo o bug corregido llega con su test en `tests/` (los bugs, como
     regresión que reproduce el caso que fallaba).
+14. Filtros por fecha sobre `TIMESTAMPTZ` → helpers de `repositories/time_filters.py`
+    (rango de instantes), nunca funciones aplicadas a la columna en el `WHERE`.
+15. Servicios externos (Google Sheets) detrás de un `Protocol` inyectado con `Depends`,
+    para reemplazarlos en los tests; sus fallas se traducen a `ExternalServiceError` (502).
+16. Operaciones que no deben correr dos a la vez sobre el mismo recurso global (archivado)
+    → `pg_advisory_xact_lock`; sobre una fila → `get_for_update()`.

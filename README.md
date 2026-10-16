@@ -15,7 +15,28 @@ SECRET_KEY=<generar con: python -c "import secrets; print(secrets.token_hex(32))
 DEBUG=false
 ACCESS_TOKEN_EXPIRE_MINUTES=60
 REFRESH_TOKEN_EXPIRE_DAYS=30
+# Archivado mensual en Google Sheets (solo necesario para exportar/purgar)
+GOOGLE_CREDENTIALS_FILE=credentials/google-service-account.json
+HISTORY_RETENTION_MONTHS=2
+# Vendedor (user_vehicle.code) que recibe en el cierre los pedidos sin conductor
+DEFAULT_SELLER_CODE=01
 ```
+
+### Google Sheets (archivado mensual)
+
+1. En Google Cloud, crea una **cuenta de servicio**, habilita la API de Google Sheets y
+   descarga su llave JSON. Guárdala fuera del control de versiones y apunta
+   `GOOGLE_CREDENTIALS_FILE` a esa ruta.
+2. Crea un spreadsheet por año y **compártelo como editor** con el `client_email` de la
+   cuenta de servicio.
+3. Regístralo en la API: `PUT /api/v1/archive/spreadsheets/{año}` con su ID o URL.
+
+### Vendedor por defecto (cierre)
+
+Los seeds lo crean en una BD nueva. En una BD que ya tenía datos, créalo una vez: rol
+`VENDEDOR` para el usuario (`POST /user_roles`) y su `user_vehicle` con código `01`
+(`POST /user_vehicles`). Sin él, el cierre de un día con pedidos sin conductor responde
+422 `DEFAULT_SELLER_MISSING`.
 
 ## Comandos de Inicialización
 

@@ -26,3 +26,6 @@ app/.env.*
 *.txt
 !requirements*.txt
 *.zip
+
+# Llaves de Google (cuenta de servicio)
+credentials/
