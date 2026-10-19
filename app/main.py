@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.exception_handlers import register_exception_handlers
 from app.api.routers.auth import auth_router
@@ -25,6 +26,7 @@ from app.api.routers.securityModule import (
     user_role_router,
     user_router,
 )
+from app.core.config import settings
 
 app = FastAPI(
     title="FC API MVP",
@@ -32,6 +34,18 @@ app = FastAPI(
     version="0.1.0",
     swagger_ui_parameters={"docExpansion": "none"},
 )
+
+# CORS: solo si el front vive en otro origen que la API. Con cookies hay que listar
+# orígenes explícitos (no "*") y activar allow_credentials.
+if settings.CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["Content-Disposition"],
+    )
 
 # Registro de Routers
 

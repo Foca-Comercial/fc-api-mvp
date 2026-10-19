@@ -100,7 +100,7 @@ alembic downgrade base
 
 ## Pendientes SPFF
 
-- [ ] Refresh token en cookie - Al implementar el front:
+- [x] Refresh token en cookie - Al implementar el front:
 
 Son ajustes concretos, pero no hace falta implementarlos hoy (depende de decisiones que solo se pueden tomar cuando exista el frontend real: dominio, si está en el mismo origen o no, HTTPS, etc.). Lista de cambios:
 

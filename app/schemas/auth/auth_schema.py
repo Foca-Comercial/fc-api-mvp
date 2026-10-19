@@ -4,12 +4,15 @@ from pydantic import BaseModel
 
 
 class Token(BaseModel):
+    """Lo que ve el cliente en el body: el refresh token viaja en cookie httpOnly."""
+
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
 
 
-class RefreshRequest(BaseModel):
+class TokenPair(Token):
+    """Uso interno del service: el router saca el refresh token hacia la cookie."""
+
     refresh_token: str
 
 

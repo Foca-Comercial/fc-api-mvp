@@ -550,7 +550,7 @@ alembic upgrade head
 | Token | Vida | Dónde vive | Propósito |
 |---|---|---|---|
 | **Access token** | Corta (60 min, configurable) | En memoria del frontend | Autoriza cada petición. Stateless — nunca se guarda en BD. |
-| **Refresh token** | Larga (30 días, configurable) | Body de respuesta (pendiente mover a cookie `httpOnly` cuando exista frontend) | Renueva el access token sin re-login. **Con estado**, registrado en `user_session`. |
+| **Refresh token** | Larga (30 días, configurable) | Body de respuesta (cookie en `httpOnly`) | Renueva el access token sin re-login. **Con estado**, registrado en `user_session`. |
 
 **Por qué el refresh token necesita tabla propia:** un JWT es stateless por diseño — el
 servidor nunca lo "recuerda", solo valida su firma y `exp`. Esto es ideal para el access
@@ -1005,12 +1005,9 @@ Cómo ejecutarlas: ver `README.md`.
   `closure_export.py` cuando Siigo defina columnas y códigos.
 - **Cancelación de pedido**: no existe aún un endpoint `CANCELLED` explícito con sus propias
   reglas de transición.
-- **Refresh token en cookie `httpOnly`**: hoy se devuelve en el body del JSON (cómodo para
-  pruebas en Thunder Client); al conectar el frontend real, migrar a cookie `httpOnly` +
-  `Secure`, configurar CORS con `allow_credentials=True` y orígenes explícitos, decidir
-  `SameSite` según si frontend/backend comparten dominio (detalle en el `README.md`).
-  En esa configuración de CORS, exponer `Content-Disposition` (`expose_headers`) para que
-  el frontend lea el nombre de los archivos descargados (Excel del cierre, PDF).
+- **Refresh token en cookie `httpOnly`**: Cookie `httpOnly` + `Secure`, configurar CORS 
+  con `allow_credentials=True` y orígenes explícitos, decidir `SameSite` según si frontend/backend 
+  comparten dominio (detalle en el `README.md`). En esa configuración de CORS, exponer `Content-Disposition` (`expose_headers`) para que el frontend lea el nombre de los archivos descargados (Excel del cierre, PDF).
 - **Unificar formato de error 422 de Pydantic** con el formato uniforme de `BusinessError`
   (o resolverlo del lado del frontend con un segundo handler).
 - **Rol de domiciliario operando sus propios pedidos** (marcar entrega desde app móvil).

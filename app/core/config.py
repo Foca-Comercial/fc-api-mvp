@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -11,6 +12,13 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    # Cookie httpOnly del refresh token. En producción: COOKIE_SECURE=true (HTTPS).
+    # SameSite "lax" sirve si front y API comparten dominio (o el proxy de dev);
+    # con dominios distintos se necesita "none" (que exige Secure).
+    COOKIE_SECURE: bool = False
+    COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
+    COOKIE_DOMAIN: str | None = None
+    CORS_ORIGINS: list[str] = []
     GOOGLE_CREDENTIALS_FILE: Path | None = None
     # Meses que se conservan en la BD (incluido el vigente). Con 2: en octubre
     # se conservan octubre y septiembre; agosto y anteriores se pueden purgar.

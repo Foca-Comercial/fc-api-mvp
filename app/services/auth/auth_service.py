@@ -13,7 +13,7 @@ from app.repositories.securityModule.user_repository import user_repository
 from app.repositories.securityModule.user_session_repository import (
     user_session_repository,
 )
-from app.schemas.auth.auth_schema import SessionCreate, Token
+from app.schemas.auth.auth_schema import SessionCreate, TokenPair
 from app.utils.exceptions.business_exceptions import UnauthorizedError
 from app.utils.helpers.password_helper import verify_password
 
@@ -35,7 +35,7 @@ class AuthService:
         password: str,
         user_agent: str | None = None,
         ip_address: str | None = None,
-    ) -> Token:
+    ) -> TokenPair:
         user = self.authenticate(db, username=username, password=password)
         return self._issue_tokens(
             db, user, user_agent=user_agent, ip_address=ip_address
@@ -48,7 +48,7 @@ class AuthService:
         refresh_token: str,
         user_agent: str | None = None,
         ip_address: str | None = None,
-    ) -> Token:
+    ) -> TokenPair:
         token_hash = hash_refresh_token(refresh_token)
         # Bloquea la sesión: dos refresh simultáneos con el mismo token no pueden
         # rotarla dos veces. El segundo espera y luego cae en "reutilización".
@@ -65,7 +65,7 @@ class AuthService:
                 user_session_repository.revoke_all_for_user(db, stale.id_user)
             raise UnauthorizedError("Sesión inválida, inicia sesión nuevamente.")
 
-        if session.expires_at < datetime.now(timezone.utc):
+        if session.expires_at < datetime.now(timezone.utc):  # noqa: UP017
             user_session_repository.revoke(db, session)
             raise UnauthorizedError("La sesión expiró, inicia sesión nuevamente.")
 
@@ -96,12 +96,12 @@ class AuthService:
         *,
         user_agent: str | None,
         ip_address: str | None,
-    ) -> Token:
+    ) -> TokenPair:
         role_names = [ur.role.name for ur in user.user_roles]
         access_token = create_access_token(subject=user.id_user, roles=role_names)
 
         refresh_token = generate_refresh_token()
-        expires_at = datetime.now(timezone.utc) + timedelta(
+        expires_at = datetime.now(timezone.utc) + timedelta(  # noqa: UP017
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
         )
         user_session_repository.create(
@@ -114,7 +114,7 @@ class AuthService:
                 ip_address=ip_address,
             ),
         )
-        return Token(access_token=access_token, refresh_token=refresh_token)
+        return TokenPair(access_token=access_token, refresh_token=refresh_token)
 
 
 auth_service = AuthService()
