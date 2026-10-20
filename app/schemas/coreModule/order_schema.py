@@ -101,6 +101,7 @@ class OrderSummaryResponse(BaseModel):
     id_order: int
     purchase_order: str
     creation_time: str
+    estimated_delivery: time | None = None
     client_name: str
     zone_name: str
     product_codes: str

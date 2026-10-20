@@ -84,6 +84,7 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
                 Order.id_order,
                 Order.purchase_order,
                 func.to_char(created_local, "HH24:MI").label("creation_time"),
+                Order.estimated_delivery,
                 Client.name.label("client_name"),
                 Zone.name.label("zone_name"),
                 func.string_agg(Product.code, ", ").label("product_codes"),
@@ -261,7 +262,9 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .join(TakerUser, TakerUser.id_user == Order.id_user_taker)
             .join(TakerPerson, TakerPerson.id_person == TakerUser.id_person)
             .outerjoin(Route, Route.id_route == Order.id_route)
-            .outerjoin(UserVehicle, UserVehicle.id_user_vehicle == Order.id_user_vehicle)
+            .outerjoin(
+                UserVehicle, UserVehicle.id_user_vehicle == Order.id_user_vehicle
+            )
             .outerjoin(UserRole, UserRole.id_user_role == UserVehicle.id_user_role)
             .outerjoin(DriverUser, DriverUser.id_user == UserRole.id_user)
             .outerjoin(DriverPerson, DriverPerson.id_person == DriverUser.id_person)

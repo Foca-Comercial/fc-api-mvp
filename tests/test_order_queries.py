@@ -100,3 +100,12 @@ def test_dashboard_usa_el_dia_y_la_hora_de_bogota(client, create_order, db):
     assert order["id_order"] not in _ids(day_15)
     row = next(r for r in day_14.json() if r["id_order"] == order["id_order"])
     assert row["creation_time"] == "23:30"
+
+
+def test_dashboard_incluye_hora_estimada(client, create_order):
+    order = create_order(estimated_delivery="14:30:00")
+
+    rows = client.get(f"{API}/orders/dashboard-summary").json()
+    row = next(r for r in rows if r["id_order"] == order["id_order"])
+
+    assert row["estimated_delivery"] == "14:30:00"

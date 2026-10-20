@@ -82,16 +82,17 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
     def _to_summary(rows: list) -> list[OrderSummaryResponse]:
         return [
             OrderSummaryResponse(
-                id_order=row.id_order,  # type: ignore
-                purchase_order=row.purchase_order,  # type: ignore
-                creation_time=row.creation_time,  # type: ignore
-                client_name=row.client_name,  # type: ignore
-                zone_name=row.zone_name,  # type: ignore
-                product_codes=row.product_codes,  # type: ignore
-                total_quantity=row.total_quantity,  # type: ignore
-                driver_code=row.driver_code,  # type: ignore
-                driver_name=row.driver_name,  # type: ignore
-                state=row.state,  # type: ignore
+                id_order=row.id_order,
+                purchase_order=row.purchase_order,
+                creation_time=row.creation_time,
+                estimated_delivery=row.estimated_delivery,
+                client_name=row.client_name,
+                zone_name=row.zone_name,
+                product_codes=row.product_codes,
+                total_quantity=row.total_quantity,
+                driver_code=row.driver_code,
+                driver_name=row.driver_name,
+                state=row.state,
             )
             for row in rows
         ]
