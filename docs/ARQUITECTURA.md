@@ -803,15 +803,23 @@ Roles: `GESTOR_COMERCIAL` (y `ADMINISTRADOR`). Desactivar/eliminar una ruta
   rutas inactivas salvo `only_active=true`.
 - **`POST /routes/`** y **`PATCH /routes/{id}`**: crear y editar (`days_week` como lista,
   ver sección 4).
-- **`GET /routes/{id}/clients`**: clientes asignados, con teléfono, dirección, barrio, zona
-  y estado.
+- **`GET /routes/{id}/clients`**: clientes asignados, con teléfono, dirección, barrio, zona,
+  estado y su **pedido base** (`base_items`: producto, código, nombre y cantidad).
 - **`GET /routes/{id}/available-clients`**: selector de clientes para asignar —
   registrados, activos y aún no asignados a esa ruta.
 - **`POST /routes/{id}/clients`** `{"id_client": ...}`: asigna un cliente (debe existir,
   estar activo y ser **registrado**: 422 `CLIENT_NOT_REGISTERED`; 409 si ya está asignado).
   Se permite aunque la ruta esté inactiva.
 - **`DELETE /routes/{id}/clients/{id_client}`**: quita la asignación (borra la fila de
-  `client_route`; el cliente no se toca). 404 si no estaba asignado.
+  `client_route` y, en cascada, su pedido base; el cliente no se toca). 404 si no estaba
+  asignado.
+- **`PUT /routes/{id}/clients/{id_client}/base-order`** `{"items": [{"id_product", "cant"}]}`:
+  guarda el **pedido base** del cliente en la ruta (lo que suele pedir cada vez que sale).
+  Es la lista FINAL: reemplaza la anterior y una lista vacía lo borra. Productos que existan
+  y estén activos (`REFERENCE_INACTIVE`), sin repetidos (`DUPLICATE_PRODUCT`), `cant > 0`.
+  404 si el cliente no está en la ruta. Tabla `client_route_item` (FK a `client_route` con
+  `ON DELETE CASCADE`, único por producto). No guarda precio: se resuelve al generar el
+  pedido.
 
 El CRUD genérico `/client_routes` se mantiene solo para `ADMINISTRADOR`; la vista usa los
 endpoints anidados bajo `/routes/{id}/clients`.
@@ -824,8 +832,9 @@ Flujo plantilla → formulario → POST (`GESTOR_COMERCIAL`):
    semana, con `clients_count` y cuántos pedidos de ese día salieron de cada una.
 2. **`GET /orders/routes/{id}/template`**: precarga del formulario — productos del
    catálogo y, por cliente de la ruta (registrado y activo), el precio que le aplica a cada
-   producto (`is_special` si es precio pactado) y `existing_order_id` si ya tiene pedido de
-   hoy desde esa ruta.
+   producto (`is_special` si es precio pactado), `existing_order_id` si ya tiene pedido de
+   hoy desde esa ruta y `base_items` (su pedido base, solo productos activos) para
+   precargar las cantidades.
 3. **`POST /orders/routes/{id}`**: crea en **una sola transacción** los pedidos de los
    clientes que vienen con productos (todo o nada). Bloquea la ruta (`FOR UPDATE`) para que
    dos gestores no la generen dos veces. Rechaza ruta inactiva (`ROUTE_INACTIVE`), clientes

@@ -5,6 +5,7 @@ from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
 from app.schemas.parametersModule.route_schema import (
     RouteAvailableClientResponse,
+    RouteBaseOrderUpdate,
     RouteCardResponse,
     RouteClientAssign,
     RouteClientResponse,
@@ -121,3 +122,21 @@ def unassign_client_from_route(
     db: Session = Depends(get_db),  # noqa: B008
 ):
     route_service.unassign_client(db, id_route=route_id, id_client=client_id)
+
+
+# Pedido base del cliente en la ruta: lista FINAL (reemplaza la anterior; vacía la
+# borra). Precarga el formulario de pedidos por ruta (GET /orders/routes/{id}/template).
+@router.put(
+    "/{route_id}/clients/{client_id}/base-order",
+    response_model=RouteClientResponse,
+    roles=ROUTE_MANAGERS,
+)
+def set_client_base_order(
+    route_id: int,
+    client_id: int,
+    body: RouteBaseOrderUpdate,
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    return route_service.set_base_order(
+        db, id_route=route_id, id_client=client_id, items=body.items
+    )

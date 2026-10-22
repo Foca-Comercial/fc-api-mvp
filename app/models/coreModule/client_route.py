@@ -7,6 +7,7 @@ from app.db.database import Base
 
 if TYPE_CHECKING:
     from app.models.coreModule.client import Client
+    from app.models.coreModule.client_route_item import ClientRouteItem
     from app.models.parametersModule.route import Route
 
 
@@ -32,3 +33,10 @@ class ClientRoute(Base):
         BigInteger, ForeignKey("route.id_route", ondelete="CASCADE"), nullable=False
     )
     route: Mapped["Route"] = relationship(back_populates="client_routes")
+
+    # Pedido base del cliente en esta ruta (lo borra la BD con ON DELETE CASCADE)
+    items: Mapped[list["ClientRouteItem"]] = relationship(
+        back_populates="client_route",
+        passive_deletes=True,
+        order_by="ClientRouteItem.id_client_route_item",
+    )

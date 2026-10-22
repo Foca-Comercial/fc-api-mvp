@@ -2,10 +2,16 @@ from sqlalchemy.orm import Session
 
 from app.models.parametersModule.route import Route
 from app.repositories.coreModule.client_repository import client_repository
+from app.repositories.coreModule.client_route_item_repository import (
+    client_route_item_repository,
+)
 from app.repositories.coreModule.client_route_repository import client_route_repository
+from app.repositories.coreModule.product_repository import product_repository
 from app.repositories.parametersModule.route_repository import route_repository
 from app.schemas.parametersModule.route_schema import (
     RouteAvailableClientResponse,
+    RouteBaseItemInput,
+    RouteBaseItemResponse,
     RouteCardResponse,
     RouteClientResponse,
     RouteCreate,
@@ -48,9 +54,22 @@ class RouteService(BaseService[Route, RouteCreate, RouteUpdate]):
 
     def get_clients(self, db: Session, id_route: int) -> list[RouteClientResponse]:
         self.get(db, id_route)  # 404 si la ruta no existe
+        rows = route_repository.get_clients(db, id_route)
+
+        # Pedido base de cada asignación, en una sola consulta
+        base_items: dict[int, list[RouteBaseItemResponse]] = {}
+        for item in client_route_item_repository.get_for_links(
+            db, [row.id_client_route for row in rows]
+        ):
+            base_items.setdefault(item.id_client_route, []).append(
+                RouteBaseItemResponse.model_validate(item)
+            )
+
         return [
-            RouteClientResponse.model_validate(row)
-            for row in route_repository.get_clients(db, id_route)
+            RouteClientResponse(
+                **row._mapping, base_items=base_items.get(row.id_client_route, [])
+            )
+            for row in rows
         ]
 
     def get_available_clients(
@@ -103,8 +122,54 @@ class RouteService(BaseService[Route, RouteCreate, RouteUpdate]):
         )
         if link is None:
             raise EntityNotFoundError("Cliente en la ruta", id_client)
+        # Su pedido base se borra en cascada (ON DELETE CASCADE)
         client_route_repository.delete(db, db_obj=link)
         db.commit()
+
+    # --- Pedido base del cliente en la ruta ---
+
+    def set_base_order(
+        self,
+        db: Session,
+        *,
+        id_route: int,
+        id_client: int,
+        items: list[RouteBaseItemInput],
+    ) -> RouteClientResponse:
+        """Reemplaza el pedido base del cliente en la ruta (vacío = se borra)."""
+        self.get(db, id_route)
+        link = client_route_repository.get_by_pair(
+            db, id_route=id_route, id_client=id_client
+        )
+        if link is None:
+            raise EntityNotFoundError("Cliente en la ruta", id_client)
+
+        product_ids = [item.id_product for item in items]
+        repeated = sorted({i for i in product_ids if product_ids.count(i) > 1})
+        if repeated:
+            raise BusinessValidationError(
+                "Producto repetido en el pedido base "
+                f"(ID: {', '.join(str(i) for i in repeated)}). "
+                "Agrupa la cantidad en un solo renglón.",
+                field="id_product",
+                code="DUPLICATE_PRODUCT",
+            )
+        for item in items:
+            ensure_reference(
+                db,
+                product_repository,
+                item.id_product,
+                field="id_product",
+                label="Producto",
+            )
+
+        client_route_item_repository.replace(
+            db, id_client_route=link.id_client_route, items=items
+        )
+        db.commit()
+        return next(
+            c for c in self.get_clients(db, id_route) if c.id_client == id_client
+        )
 
 
 # Instancia única para inyectar en el router
