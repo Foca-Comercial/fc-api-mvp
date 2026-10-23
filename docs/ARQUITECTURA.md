@@ -822,17 +822,25 @@ Flujo plantilla → formulario → POST (`GESTOR_COMERCIAL`):
 
 1. **`GET /orders/routes-of-day?target_date=`**: rutas activas que salen ese día de la
    semana, con `clients_count` y cuántos pedidos de ese día salieron de cada una.
-2. **`GET /orders/routes/{id}/template`**: precarga del formulario — productos del
-   catálogo y, por cliente de la ruta (registrado y activo), el precio que le aplica a cada
-   producto (`is_special` si es precio pactado) y `existing_order_id` si ya tiene pedido de
-   hoy desde esa ruta.
+2. **`GET /orders/routes/{id}/template`**: precarga del formulario. Por cada cliente de la
+   ruta (registrado y activo): sus datos, `existing_order_id` si ya tiene pedido de hoy
+   desde esa ruta y **solo sus productos con precio especial** (productos activos de
+   `special_customer_price`), cada uno con `unit_price` (el pactado) y `cant` sugerida
+   en 1. Un cliente sin precios especiales aparece con `products: []` (no se le puede
+   generar pedido desde la ruta). No se envía el catálogo completo.
 3. **`POST /orders/routes/{id}`**: crea en **una sola transacción** los pedidos de los
-   clientes que vienen con productos (todo o nada). Bloquea la ruta (`FOR UPDATE`) para que
-   dos gestores no la generen dos veces. Rechaza ruta inactiva (`ROUTE_INACTIVE`), clientes
-   repetidos (`DUPLICATE_CLIENT`), clientes fuera de la ruta (`CLIENT_NOT_IN_ROUTE`) y
-   clientes que ya tienen pedido de hoy desde la ruta (409 `ROUTE_ORDER_EXISTS`). Los
-   errores de renglón indican el cliente. Cada pedido guarda `id_route` (FK opcional en
-   `sale_order`) y recibe su consecutivo diario.
+   clientes que vienen con productos (todo o nada). Cada renglón es solo
+   `{id_product, cant}` (`cant > 0`): **el precio no viene del frontend**, el backend usa
+   el precio especial del cliente (si se envía `unit_price`, se ignora). Bloquea la ruta
+   (`FOR UPDATE`) para que dos gestores no la generen dos veces. Rechaza ruta inactiva
+   (`ROUTE_INACTIVE`), clientes repetidos (`DUPLICATE_CLIENT`), clientes fuera de la ruta
+   (`CLIENT_NOT_IN_ROUTE`), clientes que ya tienen pedido de hoy desde la ruta (409
+   `ROUTE_ORDER_EXISTS`), productos repetidos (`DUPLICATE_PRODUCT`) y productos sin precio
+   especial para ese cliente o inactivos (`NO_SPECIAL_PRICE`). Los errores de renglón
+   indican el cliente. Cada pedido guarda `id_route` (FK opcional en `sale_order`) y
+   recibe su consecutivo diario.
+4. **Agregar o quitar productos, o cambiar precios** después de generado: se edita cada
+   pedido con `PUT /orders/{id}/items-order` (solo en `PENDING`), como cualquier pedido.
 
 ### Vista Histórico
 

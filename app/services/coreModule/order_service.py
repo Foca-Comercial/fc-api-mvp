@@ -35,10 +35,10 @@ from app.schemas.coreModule.order_schema import (
 )
 from app.schemas.coreModule.route_order_schema import (
     RouteOfDayResponse,
+    RouteOrderItemInput,
     RouteOrdersCreate,
     RouteOrderTemplateResponse,
     RouteTemplateClient,
-    RouteTemplatePrice,
     RouteTemplateProduct,
 )
 from app.services.base_service import BaseService
@@ -329,7 +329,9 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             for route, clients_count, orders_count in rows
         ]
 
-    # Precarga: clientes de la ruta con el precio que aplica a cada producto
+    # Precarga: por cada cliente de la ruta, sus productos con precio especial
+    # (cantidad sugerida 1). Un cliente sin precios especiales llega con
+    # products=[]: aparece en el formulario, pero no se le genera pedido.
     def get_route_template(
         self, db: Session, id_route: int
     ) -> RouteOrderTemplateResponse:
@@ -337,27 +339,26 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         if route is None:
             raise EntityNotFoundError("Ruta", id_route)
 
-        products = [p for p, _ in product_repository.get_catalog(db)]
         clients = route_repository.get_orderable_clients(db, id_route)
-        specials = special_customer_price_repository.get_for_clients(
+        products_by_client: dict[int, list[RouteTemplateProduct]] = {}
+        for row in special_customer_price_repository.get_products_for_clients(
             db,
             [c.id_client for c in clients],  # type: ignore
-        )
+        ):
+            products_by_client.setdefault(row.id_client, []).append(  # type: ignore
+                RouteTemplateProduct(
+                    id_product=row.id_product,  # type: ignore
+                    code=row.code,  # type: ignore
+                    name=row.name,  # type: ignore
+                    unit_price=row.agreed_price,  # type: ignore
+                )  # type: ignore
+            )
         existing = order_repository.get_route_orders_today(db, id_route)
 
         return RouteOrderTemplateResponse(
             id_route=route.id_route,
             name=route.name,
             departure_time=route.departure_time,
-            products=[
-                RouteTemplateProduct(
-                    id_product=p.id_product,
-                    code=p.code,
-                    name=p.name,
-                    base_price=p.base_price,
-                )
-                for p in products
-            ],
             clients=[
                 RouteTemplateClient(
                     id_client=c.id_client,  # type: ignore
@@ -366,17 +367,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                     address=c.address,  # type: ignore
                     neighborhood_name=c.neighborhood_name,  # type: ignore
                     zone_name=c.zone_name,  # type: ignore
-                    prices=[
-                        RouteTemplatePrice(
-                            id_product=p.id_product,
-                            unit_price=specials.get(
-                                (c.id_client, p.id_product),  # type: ignore
-                                p.base_price,  # type: ignore
-                            ),  # type: ignore
-                            is_special=(c.id_client, p.id_product) in specials,  # type: ignore
-                        )
-                        for p in products
-                    ],
+                    products=products_by_client.get(c.id_client, []),  # type: ignore
                     existing_order_id=existing.get(c.id_client),  # type: ignore
                 )
                 for c in clients
@@ -438,9 +429,19 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         if obj_in.id_user_vehicle is not None:
             self._ensure_vehicle(db, obj_in.id_user_vehicle)
 
+        # El precio NO viene del frontend: es el especial pactado de cada cliente
+        agreed = {
+            (row.id_client, row.id_product): row.agreed_price  # type: ignore
+            for row in special_customer_price_repository.get_products_for_clients(
+                db, client_ids
+            )
+        }
+        items_by_client: dict[int, list[OrderItemInput]] = {}
         for client_order in obj_in.orders:
             try:
-                self._validate_items(db, client_order.items)
+                items_by_client[client_order.id_client] = self._priced_route_items(
+                    client_order.id_client, client_order.items, agreed
+                )
             except BusinessError as error:
                 # Indica a qué cliente pertenece el renglón con error
                 raise BusinessValidationError(
@@ -454,7 +455,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 db,
                 id_client=client_order.id_client,
                 id_user_taker=id_user_taker,
-                items=client_order.items,
+                items=items_by_client[client_order.id_client],
                 estimated_delivery=obj_in.estimated_delivery,
                 id_user_vehicle=obj_in.id_user_vehicle,
                 id_route=id_route,
@@ -527,9 +528,38 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 label="Producto",
             )
 
+    def _priced_route_items(
+        self,
+        id_client: int,
+        items: list[RouteOrderItemInput],
+        agreed: dict[tuple[int, int], Decimal],
+    ) -> list[OrderItemInput]:
+        """Renglones de un pedido de ruta con el precio especial del cliente.
+        Solo se aceptan productos activos con precio especial para ese cliente."""
+        self._ensure_no_duplicate_products(items)
+        missing = [
+            i.id_product for i in items if (id_client, i.id_product) not in agreed
+        ]
+        if missing:
+            raise BusinessValidationError(
+                f"Estos productos no tienen precio especial para el cliente o están "
+                f"inactivos (ID: {_ids(missing)}). Agrégalos después editando el "
+                "pedido.",
+                field="id_product",
+                code="NO_SPECIAL_PRICE",
+            )
+        return [
+            OrderItemInput(
+                id_product=i.id_product,
+                cant=i.cant,
+                unit_price=agreed[(id_client, i.id_product)],
+            )
+            for i in items
+        ]
+
     @staticmethod
     def _ensure_no_duplicate_products(
-        items: list[OrderItemInput] | list[OrderItemSync],
+        items: list[OrderItemInput] | list[OrderItemSync] | list[RouteOrderItemInput],
     ) -> None:
         """Un producto solo puede aparecer en un renglón del pedido."""
         seen: set[int] = set()
