@@ -69,29 +69,6 @@ class RouteAvailableClientResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# -----------------------------------------------------
-# Pedido base del cliente en la ruta
-# -----------------------------------------------------
-class RouteBaseItemInput(BaseModel):
-    id_product: int = Field(..., gt=0, description="Producto del pedido base")
-    cant: int = Field(..., gt=0, description="Cantidad habitual")
-
-
-class RouteBaseOrderUpdate(BaseModel):
-    """Lista FINAL del pedido base (reemplaza la anterior). Vacía = sin pedido base."""
-
-    items: list[RouteBaseItemInput] = Field(default_factory=list)
-
-
-class RouteBaseItemResponse(BaseModel):
-    id_product: int
-    product_code: str
-    product_name: str
-    cant: int
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class RouteClientResponse(BaseModel):
     id_client_route: int
     id_client: int
@@ -101,8 +78,5 @@ class RouteClientResponse(BaseModel):
     neighborhood_name: str
     zone_name: str
     active: bool = Field(..., description="Estado del cliente")
-    base_items: list[RouteBaseItemResponse] = Field(
-        default_factory=list, description="Pedido base del cliente en esta ruta"
-    )
 
     model_config = ConfigDict(from_attributes=True)

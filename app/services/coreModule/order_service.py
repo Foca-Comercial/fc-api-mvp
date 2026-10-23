@@ -6,9 +6,6 @@ from sqlalchemy.orm import Session
 from app.core.timezone import BOGOTA_TZ, today_bogota
 from app.models.coreModule.order import Order
 from app.repositories.coreModule.client_repository import client_repository
-from app.repositories.coreModule.client_route_item_repository import (
-    client_route_item_repository,
-)
 from app.repositories.coreModule.order_detail_repository import order_detail_repository
 from app.repositories.coreModule.order_repository import order_repository
 from app.repositories.coreModule.product_repository import product_repository
@@ -40,7 +37,6 @@ from app.schemas.coreModule.route_order_schema import (
     RouteOfDayResponse,
     RouteOrdersCreate,
     RouteOrderTemplateResponse,
-    RouteTemplateBaseItem,
     RouteTemplateClient,
     RouteTemplatePrice,
     RouteTemplateProduct,
@@ -349,13 +345,6 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         )
         existing = order_repository.get_route_orders_today(db, id_route)
 
-        # Pedido base de cada cliente (solo productos activos): precarga el formulario
-        base_items: dict[int, list[RouteTemplateBaseItem]] = {}
-        for row in client_route_item_repository.get_for_route(db, id_route):
-            base_items.setdefault(row.id_client, []).append(
-                RouteTemplateBaseItem(id_product=row.id_product, cant=row.cant)
-            )
-
         return RouteOrderTemplateResponse(
             id_route=route.id_route,
             name=route.name,
@@ -389,7 +378,6 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                         for p in products
                     ],
                     existing_order_id=existing.get(c.id_client),  # type: ignore
-                    base_items=base_items.get(c.id_client, []),  # type: ignore
                 )
                 for c in clients
             ],

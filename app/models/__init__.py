@@ -1,7 +1,6 @@
 from app.models.coreModule.archive_spreadsheet import ArchiveSpreadsheet
 from app.models.coreModule.client import Client
 from app.models.coreModule.client_route import ClientRoute
-from app.models.coreModule.client_route_item import ClientRouteItem
 from app.models.coreModule.daily_order_counter import DailyOrderCounter
 from app.models.coreModule.monthly_archive import MonthlyArchive
 from app.models.coreModule.order import Order
@@ -24,7 +23,6 @@ __all__ = [
     "ArchiveSpreadsheet",
     "Client",
     "ClientRoute",
-    "ClientRouteItem",
     "DailyOrderCounter",
     "MonthlyArchive",
     "Neighborhood",

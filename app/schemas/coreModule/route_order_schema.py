@@ -38,12 +38,6 @@ class RouteTemplatePrice(BaseModel):
     is_special: bool
 
 
-# Renglón del pedido base que precarga el formulario (el precio sale de `prices`)
-class RouteTemplateBaseItem(BaseModel):
-    id_product: int
-    cant: int
-
-
 class RouteTemplateClient(BaseModel):
     id_client: int
     name: str
@@ -54,10 +48,6 @@ class RouteTemplateClient(BaseModel):
     prices: list[RouteTemplatePrice]
     existing_order_id: int | None = Field(
         None, description="Pedido de hoy ya generado desde esta ruta para el cliente"
-    )
-    base_items: list[RouteTemplateBaseItem] = Field(
-        default_factory=list,
-        description="Pedido base del cliente en la ruta (solo productos activos)",
     )
 
 
