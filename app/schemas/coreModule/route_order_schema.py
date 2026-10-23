@@ -5,7 +5,10 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
-from app.schemas.coreModule.order_schema import OrderItemInput, OrderResponse
+from app.schemas.coreModule.order_schema import OrderResponse
+
+# Cantidad con la que se precarga cada producto en el formulario de la ruta
+DEFAULT_ROUTE_CANT = 1
 
 
 # -----------------------------------------------------
@@ -29,13 +32,10 @@ class RouteTemplateProduct(BaseModel):
     id_product: int
     code: str
     name: str
-    base_price: Decimal
-
-
-class RouteTemplatePrice(BaseModel):
-    id_product: int
-    unit_price: Decimal = Field(..., description="Precio especial si existe, si no el base")
-    is_special: bool
+    unit_price: Decimal = Field(..., description="Precio especial pactado con el cliente")
+    cant: int = Field(
+        DEFAULT_ROUTE_CANT, description="Cantidad sugerida; el gestor la edita"
+    )
 
 
 class RouteTemplateClient(BaseModel):
@@ -45,7 +45,11 @@ class RouteTemplateClient(BaseModel):
     address: str | None
     neighborhood_name: str
     zone_name: str
-    prices: list[RouteTemplatePrice]
+    products: list[RouteTemplateProduct] = Field(
+        ...,
+        description="Productos con precio especial. Vacío si el cliente no tiene "
+        "precios especiales: no se le puede generar pedido desde la ruta",
+    )
     existing_order_id: int | None = Field(
         None, description="Pedido de hoy ya generado desde esta ruta para el cliente"
     )
@@ -55,16 +59,21 @@ class RouteOrderTemplateResponse(BaseModel):
     id_route: int
     name: str
     departure_time: time
-    products: list[RouteTemplateProduct]
     clients: list[RouteTemplateClient]
 
 
 # -----------------------------------------------------
 # Creación en lote
 # -----------------------------------------------------
+class RouteOrderItemInput(BaseModel):
+    # Sin precio: el backend usa el precio especial pactado del cliente
+    id_product: int = Field(..., gt=0, description="Producto con precio especial")
+    cant: int = Field(..., gt=0, description="Cantidad")
+
+
 class RouteOrderClientInput(BaseModel):
     id_client: int = Field(..., gt=0, description="Cliente de la ruta (ver /template)")
-    items: list[OrderItemInput] = Field(..., min_length=1)
+    items: list[RouteOrderItemInput] = Field(..., min_length=1)
 
 
 class RouteOrdersCreate(BaseModel):

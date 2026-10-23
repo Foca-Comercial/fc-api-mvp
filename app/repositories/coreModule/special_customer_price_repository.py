@@ -1,8 +1,7 @@
-from decimal import Decimal
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.coreModule.product import Product
 from app.models.coreModule.special_customer_price import SpecialCustomerPrice
 from app.repositories.base_repository import BaseRepository
 from app.schemas.coreModule.special_customer_price_schema import (
@@ -16,22 +15,30 @@ class RepositorySpecialCustomerPrice(
         SpecialCustomerPrice, SpecialCustomerPriceCreate, SpecialCustomerPriceUpdate
     ]
 ):
-    # Precios especiales de varios clientes en una consulta:
-    # {(id_client, id_product): agreed_price}
-    def get_for_clients(
+    # Pedidos por ruta: productos con precio especial de varios clientes en una
+    # consulta, solo productos activos, ordenados por cliente y código.
+    # Filas: (id_client, id_product, code, name, agreed_price)
+    def get_products_for_clients(
         self, db: Session, client_ids: list[int]
-    ) -> dict[tuple[int, int], Decimal]:
+    ) -> list[tuple]:
         if not client_ids:
-            return {}
-        stmt = select(
-            SpecialCustomerPrice.id_client,
-            SpecialCustomerPrice.id_product,
-            SpecialCustomerPrice.agreed_price,
-        ).where(SpecialCustomerPrice.id_client.in_(client_ids))
-        return {
-            (row.id_client, row.id_product): row.agreed_price
-            for row in db.execute(stmt).all()
-        }
+            return []
+        stmt = (
+            select(
+                SpecialCustomerPrice.id_client,
+                Product.id_product,
+                Product.code,
+                Product.name,
+                SpecialCustomerPrice.agreed_price,
+            )
+            .join(Product, Product.id_product == SpecialCustomerPrice.id_product)
+            .where(
+                SpecialCustomerPrice.id_client.in_(client_ids),
+                Product.active.is_(True),
+            )
+            .order_by(SpecialCustomerPrice.id_client, Product.code)
+        )
+        return list(db.execute(stmt).all())
 
 
 # Intancia del repositorio inyectando el modelo ORM
