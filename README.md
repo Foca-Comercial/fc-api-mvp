@@ -1,4 +1,4 @@
-# Sistema de Toma de Pedidos y Facturación
+# Sistema de Toma de Pedidos y Facturación 🧊
 
 API REST de **Foca Comercial** (FastAPI + SQLAlchemy 2.0 + Alembic + PostgreSQL).
 La documentación técnica (arquitectura, convenciones, flujos de negocio y roadmap) está en
