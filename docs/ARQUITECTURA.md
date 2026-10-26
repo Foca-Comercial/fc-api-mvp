@@ -799,8 +799,10 @@ Roles: `GESTOR_COMERCIAL` (y `ADMINISTRADOR`). Desactivar/eliminar una ruta
 (`DELETE /routes/{id}`) sigue siendo solo de `ADMINISTRADOR`.
 
 - **`GET /routes/cards?only_active=false`**: una card por ruta con nombre, `days_week`,
-  hora de salida, estado y `clients_count` (clientes **activos** asignados). Incluye las
-  rutas inactivas salvo `only_active=true`.
+  hora de salida, estado y `clients_count` (clientes **activos** asignados), más
+  `client_names` y `zones` (nombres y zonas de esos mismos clientes, A-Z, sacados en una
+  sola consulta para todas las cards). Incluye las rutas inactivas salvo
+  `only_active=true`.
 - **`POST /routes/`** y **`PATCH /routes/{id}`**: crear y editar (`days_week` como lista,
   ver sección 4).
 - **`GET /routes/{id}/clients`**: clientes asignados, con teléfono, dirección, barrio, zona
@@ -821,7 +823,8 @@ endpoints anidados bajo `/routes/{id}/clients`.
 Flujo plantilla → formulario → POST (`GESTOR_COMERCIAL`):
 
 1. **`GET /orders/routes-of-day?target_date=`**: rutas activas que salen ese día de la
-   semana, con `clients_count` y cuántos pedidos de ese día salieron de cada una.
+   semana, con `clients_count` (+ `client_names` y `zones` de esos clientes registrados y
+   activos) y cuántos pedidos de ese día salieron de cada una.
 2. **`GET /orders/routes/{id}/template`**: precarga del formulario. Por cada cliente de la
    ruta (registrado y activo): sus datos, `existing_order_id` si ya tiene pedido de hoy
    desde esa ruta y **solo sus productos con precio especial** (productos activos de

@@ -317,6 +317,9 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         rows = route_repository.get_routes_of_day(
             db, target_date.isoweekday(), target_date
         )
+        summary = route_repository.get_clients_summary(
+            db, [route.id_route for route, _, _ in rows], registered_only=True
+        )
         return [
             RouteOfDayResponse(
                 id_route=route.id_route,
@@ -324,6 +327,8 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 departure_time=route.departure_time,
                 days_week=route.days_week,
                 clients_count=clients_count,
+                client_names=summary.get(route.id_route, ([], []))[0],
+                zones=summary.get(route.id_route, ([], []))[1],
                 orders_count=orders_count,
             )
             for route, clients_count, orders_count in rows

@@ -50,6 +50,12 @@ class RouteResponse(RouteBase):
 # -----------------------------------------------------
 class RouteCardResponse(RouteResponse):
     clients_count: int = Field(..., description="Clientes activos asignados a la ruta")
+    client_names: list[str] = Field(
+        default_factory=list, description="Nombres de esos clientes, de la A a la Z"
+    )
+    zones: list[str] = Field(
+        default_factory=list, description="Zonas distintas de esos clientes, A-Z"
+    )
 
 
 class RouteClientAssign(BaseModel):

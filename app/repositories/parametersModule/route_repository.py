@@ -48,6 +48,42 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
             stmt = stmt.where(Route.active.is_(True))
         return list(db.execute(stmt).all())
 
+    # Nombres de los clientes activos y zonas de cada ruta, en UNA consulta para todas
+    # (las cards los muestran sin pedir los clientes ruta por ruta).
+    # {id_route: (nombres A-Z, zonas A-Z sin repetir)}. Las rutas sin clientes no
+    # aparecen. `registered_only` replica el criterio de cada conteo: las rutas del día
+    # cuentan solo clientes registrados; las cards, todos los activos.
+    def get_clients_summary(
+        self, db: Session, route_ids: list[int], *, registered_only: bool = False
+    ) -> dict[int, tuple[list[str], list[str]]]:
+        if not route_ids:
+            return {}
+        stmt = (
+            select(
+                ClientRoute.id_route,
+                Client.name,
+                Zone.name.label("zone_name"),
+            )
+            .join(Client, Client.id_client == ClientRoute.id_client)
+            .join(Neighborhood, Neighborhood.id_neighborhood == Client.id_neighborhood)
+            .join(Zone, Zone.id_zone == Neighborhood.id_zone)
+            .where(ClientRoute.id_route.in_(route_ids), Client.active.is_(True))
+            .order_by(ClientRoute.id_route, Client.name)
+        )
+        if registered_only:
+            stmt = stmt.where(Client.is_registered.is_(True))
+
+        summary: dict[int, tuple[list[str], list[str]]] = {}
+        for row in db.execute(stmt).all():
+            names, zones = summary.setdefault(row.id_route, ([], []))
+            names.append(row.name)
+            if row.zone_name not in zones:
+                zones.append(row.zone_name)
+        return {
+            id_route: (names, sorted(zones))
+            for id_route, (names, zones) in summary.items()
+        }
+
     # Clientes asignados a una ruta, con barrio y zona para mostrarlos
     def get_clients(self, db: Session, id_route: int) -> list[tuple]:
         stmt = (

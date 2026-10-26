@@ -19,7 +19,15 @@ class RouteOfDayResponse(BaseModel):
     name: str
     departure_time: time
     days_week: list[int]
-    clients_count: int = Field(..., description="Clientes activos y registrados en la ruta")
+    clients_count: int = Field(
+        ..., description="Clientes activos y registrados en la ruta"
+    )
+    client_names: list[str] = Field(
+        default_factory=list, description="Nombres de esos clientes, de la A a la Z"
+    )
+    zones: list[str] = Field(
+        default_factory=list, description="Zonas distintas de esos clientes, A-Z"
+    )
     orders_count: int = Field(
         ..., description="Pedidos ya generados ese día desde la ruta (sin cancelados)"
     )
@@ -32,7 +40,9 @@ class RouteTemplateProduct(BaseModel):
     id_product: int
     code: str
     name: str
-    unit_price: Decimal = Field(..., description="Precio especial pactado con el cliente")
+    unit_price: Decimal = Field(
+        ..., description="Precio especial pactado con el cliente"
+    )
     cant: int = Field(
         DEFAULT_ROUTE_CANT, description="Cantidad sugerida; el gestor la edita"
     )
