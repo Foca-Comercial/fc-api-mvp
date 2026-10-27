@@ -16,6 +16,8 @@ def test_detalle_de_pedido_sin_conductor(client, create_order):
     assert response.status_code == 200, response.text
     assert response.json()["driver_code"] is None
     assert response.json()["driver_name"] is None
+    assert response.json()["id_user_vehicle"] is None
+    assert response.json()["delivery_time"] is None
     assert len(response.json()["items"]) == 1
 
 
@@ -27,6 +29,20 @@ def test_detalle_de_pedido_con_conductor(client, create_order, data):
     assert response.status_code == 200, response.text
     assert response.json()["driver_code"] == "99"
     assert response.json()["driver_name"] == "Carlos Conductor"
+    assert response.json()["id_user_vehicle"] == data.user_vehicle.id_user_vehicle
+
+
+def test_detalle_de_pedido_entregado_incluye_hora_de_entrega(client, create_order):
+    order = create_order()
+    client.post(f"{API}/orders/{order['id_order']}/dispatch")
+    client.post(f"{API}/orders/{order['id_order']}/deliver")
+
+    response = client.get(f"{API}/orders/{order['id_order']}/details")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["state"] == "DELIVERED"
+    assert response.json()["dispatch_time"] is not None
+    assert response.json()["delivery_time"] is not None
 
 
 def test_comprobante_requiere_pedido_despachado(client, create_order):

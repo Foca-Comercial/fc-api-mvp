@@ -790,8 +790,10 @@ datos de un cliente existente en el flujo de registro de pedido. Solo devuelve c
   SQL; el "día" de un pedido es el de su creación.
 - **`GET /orders/{id}/details`** (`GESTOR_COMERCIAL`): detalle completo para el modal —
   items (con `id_order_detail`, para editarlos luego vía `PUT /items-order`), cliente,
-  barrio, zona y conductor. `driver_code` / `driver_name` llegan en `null` si el pedido no
-  tiene conductor asignado. Es la misma consulta que alimenta el PDF.
+  barrio, zona y conductor. `id_user_vehicle`, `driver_code` y `driver_name` llegan en
+  `null` si el pedido no tiene conductor asignado (el `id_user_vehicle` permite preseleccionar
+  el conductor al editar). Incluye `dispatch_time` y `delivery_time` (`null` mientras no
+  aplique). Es la misma consulta que alimenta el PDF.
 
 ### Vista de Rutas
 
@@ -942,9 +944,12 @@ PENDING ──(/dispatch)──> DISPATCHED ──(/deliver)──> DELIVERED
 CANCELLED es estado terminal alcanzable desde los anteriores (gestión pendiente de endpoint dedicado)
 ```
 
-- **`PATCH /orders/{id}`** (`GESTOR_COMERCIAL`): body `{"id_user_vehicle": <id> | null}`.
-  Único campo editable (asignar, reasignar o desasignar conductor). Bloqueado si el pedido
-  está en `DELIVERED` o `CANCELLED` (estados finales).
+- **`PATCH /orders/{id}`** (`GESTOR_COMERCIAL`): PATCH parcial, solo se modifica lo enviado.
+  Campos editables: `id_user_vehicle` (asignar, reasignar o desasignar conductor; `null`
+  desasigna) y `estimated_delivery` (hora estimada; `null` la quita). Bloqueado por completo
+  si el pedido está en `DELIVERED` o `CANCELLED` (estados finales). La hora estimada solo se
+  puede cambiar en `PENDING` (422 con `field: "estimated_delivery"` si ya fue despachado);
+  el conductor sí se puede cambiar estando `DISPATCHED`.
 - **`POST /orders/{id}/dispatch`** (`GESTOR_COMERCIAL`): valida `state == PENDING`, cambia a
   `DISPATCHED`, registra `dispatch_time` (hora de Bogotá). No valida que haya conductor
   asignado — decisión de negocio explícita del cliente (empresa).

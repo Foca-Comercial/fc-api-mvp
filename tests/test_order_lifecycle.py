@@ -117,6 +117,66 @@ def test_patch_con_conductor_inexistente(client, create_order):
     assert response.json()["field"] == "id_user_vehicle"
 
 
+def test_patch_cambia_hora_estimada_sin_tocar_el_conductor(client, create_order, data):
+    order = create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle)
+
+    response = client.patch(
+        f"{API}/orders/{order['id_order']}", json={"estimated_delivery": "15:30:00"}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["estimated_delivery"] == "15:30:00"
+    assert response.json()["id_user_vehicle"] == data.user_vehicle.id_user_vehicle
+
+
+def test_patch_solo_conductor_no_toca_la_hora_estimada(client, create_order, data):
+    order = create_order(estimated_delivery="10:00:00")
+
+    response = client.patch(
+        f"{API}/orders/{order['id_order']}",
+        json={"id_user_vehicle": data.user_vehicle.id_user_vehicle},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["estimated_delivery"] == "10:00:00"
+
+
+def test_patch_con_null_quita_la_hora_estimada(client, create_order):
+    order = create_order(estimated_delivery="10:00:00")
+
+    response = client.patch(
+        f"{API}/orders/{order['id_order']}", json={"estimated_delivery": None}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["estimated_delivery"] is None
+
+
+def test_patch_hora_estimada_bloqueada_en_pedido_despachado(client, create_order):
+    order = create_order()
+    client.post(f"{API}/orders/{order['id_order']}/dispatch")
+
+    response = client.patch(
+        f"{API}/orders/{order['id_order']}", json={"estimated_delivery": "15:30:00"}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["field"] == "estimated_delivery"
+
+
+def test_patch_conductor_permitido_en_pedido_despachado(client, create_order, data):
+    order = create_order()
+    client.post(f"{API}/orders/{order['id_order']}/dispatch")
+
+    response = client.patch(
+        f"{API}/orders/{order['id_order']}",
+        json={"id_user_vehicle": data.user_vehicle.id_user_vehicle},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["id_user_vehicle"] == data.user_vehicle.id_user_vehicle
+
+
 # --- PUT /items-order: sincronización de productos -------------------------------
 
 
