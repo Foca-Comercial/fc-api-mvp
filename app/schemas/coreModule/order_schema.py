@@ -146,6 +146,7 @@ class OrderFullDetailResponse(BaseModel):
     order_total: Decimal
 
     # Datos del Cliente Expandidos
+    id_client: int
     client_name: str
     client_phone: str | None
     client_address: str | None

@@ -17,6 +17,7 @@ def test_detalle_de_pedido_sin_conductor(client, create_order):
     assert response.json()["driver_code"] is None
     assert response.json()["driver_name"] is None
     assert response.json()["id_user_vehicle"] is None
+    assert response.json()["id_client"] == order["id_client"]
     assert response.json()["delivery_time"] is None
     assert len(response.json()["items"]) == 1
 

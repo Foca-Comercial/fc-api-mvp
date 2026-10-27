@@ -186,6 +186,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             delivery_time=order.delivery_time,
             state=order.state,
             order_total=order.order_total,  # type: ignore
+            id_client=order.id_client,
             client_name=order.client.name,
             client_phone=order.client.phone,
             client_address=order.client.address,

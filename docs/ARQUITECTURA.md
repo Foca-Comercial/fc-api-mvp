@@ -789,7 +789,8 @@ datos de un cliente existente en el flujo de registro de pedido. Solo devuelve c
   (`creation_time`) se calculan sobre `creation_datetime` convertido a hora de Bogotá en
   SQL; el "día" de un pedido es el de su creación.
 - **`GET /orders/{id}/details`** (`GESTOR_COMERCIAL`): detalle completo para el modal —
-  items (con `id_order_detail`, para editarlos luego vía `PUT /items-order`), cliente,
+  items (con `id_order_detail`, para editarlos luego vía `PUT /items-order`), cliente
+  (con su `id_client`, para pedir el catálogo con sus precios pactados al editar),
   barrio, zona y conductor. `id_user_vehicle`, `driver_code` y `driver_name` llegan en
   `null` si el pedido no tiene conductor asignado (el `id_user_vehicle` permite preseleccionar
   el conductor al editar). Incluye `dispatch_time` y `delivery_time` (`null` mientras no
