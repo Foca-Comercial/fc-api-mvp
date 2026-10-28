@@ -309,6 +309,7 @@ valor** y **qué tipo de dato representa**:
 |---|---|---|---|
 | Instante absoluto, generado por la BD | `DateTime(timezone=True)` | `server_default=func.now()` | `Order.creation_datetime` |
 | Hora del día, decisión de negocio al crear | `Time` | Sin default, la aporta quien registra | `Order.estimated_delivery` |
+| Día de negocio (fecha local de Bogotá) | `Date` | `server_default` = hoy en Bogotá | `Order.delivery_date` |
 | Hora del día, evento posterior (fuera del INSERT) | `Time` | Sin default, asignado explícito en el service | `Order.dispatch_time`, `delivery_time` |
 
 **`default` vs `server_default`:** `default=...` se resuelve en Python, al momento del
@@ -330,7 +331,8 @@ ambiguo, no se sabe a qué fecha corresponde).
 | Fecha de hoy en Bogotá (Python) | `today_bogota()` (p. ej. `Query(default_factory=today_bogota)`) |
 | Mostrar un `TIMESTAMPTZ` leído de la BD | `valor.astimezone(BOGOTA_TZ)` antes de formatear |
 | **Filtrar** por día/rango local en SQL | `on_bogota_day(col, día)` / `between_bogota_dates(col, desde, hasta)` (`repositories/time_filters.py`) |
-| Filtrar por "hoy" según la BD (junto al consecutivo) | `on_db_today(col)` |
+| Filtrar por "hoy" según la BD | `on_db_today(col)` (ya sin uso en la app; el día de negocio es `Order.delivery_date`) |
+| **Día de negocio de un pedido** (tablero, rutas, cierre, archivado, histórico) | `Order.delivery_date == día` (columna `Date`, sin zonas horarias) |
 | **Mostrar o agrupar** por fecha u hora local en SQL | `func.timezone(BOGOTA_TZ.key, columna)` y luego `cast(..., Date)` / `func.to_char(...)` |
 
 Nunca `datetime.now()` ni `date.today()` sin zona — dependen de la zona horaria del servidor
@@ -708,13 +710,27 @@ ante cualquier excepción no capturada que suba hasta el router sin commit expl�
 - `POST /orders/routes/{id_route}`: pedidos en lote desde una ruta (ver "Pedidos por
   ruta").
 
-**`purchase_order` — consecutivo diario:** cada pedido recibe `"001"`, `"002"`, … según el
-día de Bogotá en que se crea; al día siguiente vuelve a `"001"` y los días anteriores
-conservan sus números. El contador vive en `daily_order_counter` (una fila por día) y se
+**Pedidos programados — `delivery_date`:** cada pedido tiene un día de entrega
+(`sale_order.delivery_date`, `Date`, hora de Bogotá). Si el cliente no lo envía es hoy;
+para programar un pedido se envía `delivery_date` en `POST /orders/existing-client` y
+`/new-client` (hoy o posterior, máximo `MAX_SCHEDULE_DAYS` = 60 días; si no, 422
+`DELIVERY_DATE_IN_PAST` / `DELIVERY_DATE_TOO_FAR`). `creation_datetime` sigue siendo el
+instante real en que se tomó el pedido (auditoría); **el "día" del negocio es
+`delivery_date`**: tablero, rutas, consecutivo, cierre, archivado mensual (exportar y
+purgar) e histórico lo usan. Así un pedido tomado el 31 para el 2 del mes siguiente
+pertenece al mes siguiente y la purga del primero no lo borra. Los pedidos de ruta son
+siempre de hoy. Un pedido programado a futuro no se puede despachar
+(422 `ORDER_SCHEDULED`). La migración `a9c3e7b1d584` rellenó los pedidos existentes con el
+día de Bogotá de su `creation_datetime`.
+
+**`purchase_order` — consecutivo diario:** cada pedido recibe `"001"`, `"002"`, … según su
+**día de entrega**; al día siguiente vuelve a `"001"` y los demás días conservan sus
+números (así el tablero de un día nunca repite PO). El contador vive en `daily_order_counter` (una fila por día) y se
 incrementa con `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` dentro de la misma
 transacción del pedido: dos pedidos simultáneos nunca reciben el mismo número y, si el
-pedido falla, el incremento se revierte. Usa `now()` de la BD, el mismo instante que
-recibe `creation_datetime`. Máximo 999 por día (`DAILY_ORDER_LIMIT`).
+pedido falla, el incremento se revierte. Al reprogramar un pedido pendiente
+(`PATCH` con `delivery_date`) recibe el siguiente número del día de destino. Máximo 999
+por día (`DAILY_ORDER_LIMIT`).
 
 Ambos validan referencias (barrio/cliente, productos) **antes** de crear nada, calculan
 `subtotal = cant * unit_price` por cada item (nunca se confía en un subtotal enviado por el
@@ -785,9 +801,9 @@ datos de un cliente existente en el flujo de registro de pedido. Solo devuelve c
 
   Ambas comparten la misma consulta (`RepositoryOrder._summary_by_states`) y el mismo
   formato de respuesta (`OrderSummaryResponse`). `target_date` es opcional y por defecto
-  toma la fecha de hoy en Bogotá (`today_bogota`). El filtro por día y la hora mostrada
-  (`creation_time`) se calculan sobre `creation_datetime` convertido a hora de Bogotá en
-  SQL; el "día" de un pedido es el de su creación.
+  toma la fecha de hoy en Bogotá (`today_bogota`); admite días futuros para ver los
+  pedidos programados. El filtro es `delivery_date = target_date`; la hora mostrada
+  (`creation_time`) sigue siendo la de creación, convertida a hora de Bogotá en SQL.
 - **`GET /orders/{id}/details`** (`GESTOR_COMERCIAL`): detalle completo para el modal —
   items (con `id_order_detail`, para editarlos luego vía `PUT /items-order`), cliente
   (con su `id_client`, para pedir el catálogo con sus precios pactados al editar),
@@ -947,12 +963,16 @@ CANCELLED es estado terminal alcanzable desde los anteriores (gestión pendiente
 
 - **`PATCH /orders/{id}`** (`GESTOR_COMERCIAL`): PATCH parcial, solo se modifica lo enviado.
   Campos editables: `id_user_vehicle` (asignar, reasignar o desasignar conductor; `null`
-  desasigna) y `estimated_delivery` (hora estimada; `null` la quita). Bloqueado por completo
-  si el pedido está en `DELIVERED` o `CANCELLED` (estados finales). La hora estimada solo se
-  puede cambiar en `PENDING` (422 con `field: "estimated_delivery"` si ya fue despachado);
+  desasigna), `estimated_delivery` (hora estimada; `null` la quita) y `delivery_date` (día
+  de entrega; no admite `null`, hoy o posterior, máx. 60 días; recibe un consecutivo nuevo
+  del día de destino). Bloqueado por completo
+  si el pedido está en `DELIVERED` o `CANCELLED` (estados finales). La hora estimada y el
+  día de entrega solo se pueden cambiar en `PENDING` (422 con `field: "estimated_delivery"`
+  o `"delivery_date"` si ya fue despachado);
   el conductor sí se puede cambiar estando `DISPATCHED`.
 - **`POST /orders/{id}/dispatch`** (`GESTOR_COMERCIAL`): valida `state == PENDING`, cambia a
-  `DISPATCHED`, registra `dispatch_time` (hora de Bogotá). No valida que haya conductor
+  `DISPATCHED`, registra `dispatch_time` (hora de Bogotá). Rechaza (422 `ORDER_SCHEDULED`)
+  un pedido programado para un día futuro. No valida que haya conductor
   asignado — decisión de negocio explícita del cliente (empresa).
 - **`GET /orders/{id}/receipt`** (`GESTOR_COMERCIAL`): genera el
   comprobante PDF de despacho (`PdfService.generate_dispatch_receipt`, formato tirilla 80mm

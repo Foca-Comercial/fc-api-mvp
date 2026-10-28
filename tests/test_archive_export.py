@@ -91,13 +91,15 @@ def test_reexportar_reemplaza_la_pestana_y_actualiza_la_bitacora(
     assert db.query(MonthlyArchive).count() == 1
 
 
-def test_el_mes_usa_la_medianoche_de_bogota(admin, writer, create_order, period, db):
-    """Un pedido de las 23:30 del último día del mes anterior no entra en este mes."""
+def test_el_mes_usa_el_dia_de_entrega(admin, writer, create_order, period, db):
+    """Un pedido con entrega el último día del mes anterior no entra en este mes."""
     first_day = today_bogota().replace(day=1)
     late = create_order()
-    db.get(Order, late["id_order"]).creation_datetime = datetime(
+    late_row = db.get(Order, late["id_order"])
+    late_row.creation_datetime = datetime(
         first_day.year, first_day.month, first_day.day, 4, 30, tzinfo=UTC
     )  # 23:30 del día anterior en Bogotá
+    late_row.delivery_date = first_day - timedelta(days=1)
     db.commit()
     current = create_order()
 

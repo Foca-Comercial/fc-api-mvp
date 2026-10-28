@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,8 +35,13 @@ class OrderItemInput(BaseModel):
 
 
 class OrderCreateBase(BaseModel):
-    # Sin purchase_order: el servidor asigna el consecutivo del día.
+    # Sin purchase_order: el servidor asigna el consecutivo del día de entrega.
     estimated_delivery: time | None = None
+    delivery_date: date | None = Field(
+        None,
+        description="Día de entrega (Bogotá). Si no se envía, es hoy. "
+        "Para programar un pedido: una fecha futura (máx. 60 días)",
+    )
     id_user_vehicle: int | None = Field(None, description="Opcional")
     items: list[OrderItemInput] = Field(..., min_length=1)
 
@@ -66,6 +71,11 @@ class OrderUpdate(BaseModel):
         description="Hora estimada de entrega (null para quitarla). "
         "Solo editable mientras el pedido está PENDING",
     )
+    delivery_date: date | None = Field(
+        None,
+        description="Nuevo día de entrega (no admite null). Solo editable mientras "
+        "el pedido está PENDING; recibe un consecutivo nuevo del día de destino",
+    )
 
 
 # -----------------------------------------------------
@@ -90,6 +100,7 @@ class OrderResponse(OrderBase):
     id_user_taker: int
     id_route: int | None = None
     creation_datetime: datetime
+    delivery_date: date
     dispatch_time: time | None
     delivery_time: time | None
     state: OrderState
@@ -139,6 +150,7 @@ class OrderFullDetailResponse(BaseModel):
     id_order: int
     purchase_order: str
     creation_datetime: datetime
+    delivery_date: date
     estimated_delivery: time | None
     dispatch_time: time | None
     delivery_time: time | None

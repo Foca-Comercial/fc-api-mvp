@@ -61,9 +61,9 @@ def _dispatch(client, order: dict, deliver: bool = False) -> None:
 
 
 def _move(db, order: dict, day: date) -> None:
-    db.get(Order, order["id_order"]).creation_datetime = datetime.combine(
-        day, time(10, 0), tzinfo=BOGOTA_TZ
-    )
+    row = db.get(Order, order["id_order"])
+    row.creation_datetime = datetime.combine(day, time(10, 0), tzinfo=BOGOTA_TZ)
+    row.delivery_date = day
     db.commit()
 
 

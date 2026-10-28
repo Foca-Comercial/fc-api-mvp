@@ -2,11 +2,11 @@ from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Date, cast, delete, func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.core.timezone import BOGOTA_TZ, bogota_month_range
+from app.core.timezone import bogota_month_range
 from app.models.coreModule.order import Order
 from app.models.coreModule.order_detail import OrderDetail
 from app.models.coreModule.shift_closure import ShiftClosure
@@ -77,7 +77,7 @@ class RepositoryShiftClosure(
     # todos los vendedores del día) no coinciden con los pedidos actuales.
     def get_unclosed_days(self, db: Session, month: date) -> list[date]:
         start, end = bogota_month_range(month.year, month.month)
-        order_day = cast(func.timezone(BOGOTA_TZ.key, Order.creation_datetime), Date)
+        order_day = Order.delivery_date
         billable = (
             select(
                 order_day.label("order_day"),
@@ -86,12 +86,10 @@ class RepositoryShiftClosure(
             )
             .join(OrderDetail, OrderDetail.id_order == Order.id_order)
             .where(
-                Order.creation_datetime >= start,
-                Order.creation_datetime < end,
+                Order.delivery_date >= start.date(),
+                Order.delivery_date < end.date(),
                 Order.state.in_(BILLABLE_STATES),
             )
-            # Por el alias: repetir la expresión duplicaría el parámetro de la
-            # zona horaria y PostgreSQL no la reconocería como la misma.
             .group_by("order_day")
         )
         exported = (

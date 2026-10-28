@@ -54,6 +54,8 @@ from app.utils.exceptions.business_exceptions import (
 
 # purchase_order es String(3): consecutivo diario de 001 a 999
 MAX_DAILY_ORDERS = 999
+# Cuántos días hacia adelante se puede programar un pedido
+MAX_SCHEDULE_DAYS = 60
 
 
 class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
@@ -181,6 +183,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             id_order=order.id_order,
             purchase_order=order.purchase_order,
             creation_datetime=order.creation_datetime,
+            delivery_date=order.delivery_date,
             estimated_delivery=order.estimated_delivery,
             dispatch_time=order.dispatch_time,
             delivery_time=order.delivery_time,
@@ -210,6 +213,8 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             label="Barrio",
         )
         self._validate_items(db, obj_in.items)
+        # Valida la fecha antes de crear el cliente temporal
+        self._resolve_delivery_date(obj_in.delivery_date)
 
         client = client_repository.add(
             db, obj_in_data={**obj_in.client.model_dump(), "is_registered": False}
@@ -240,6 +245,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
     def _create_order_with_items(
         self, db: Session, *, id_client, id_user_taker, order_in
     ) -> Order:
+        delivery_date = self._resolve_delivery_date(order_in.delivery_date)
         if order_in.id_user_vehicle is not None:
             self._ensure_vehicle(db, order_in.id_user_vehicle)
 
@@ -248,12 +254,35 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             id_client=id_client,
             id_user_taker=id_user_taker,
             items=order_in.items,
+            delivery_date=delivery_date,
             estimated_delivery=order_in.estimated_delivery,
             id_user_vehicle=order_in.id_user_vehicle,
         )
         db.commit()
         db.refresh(order)
         return order
+
+    # Día de entrega pedido: hoy si no viene; si viene, entre hoy y hoy + 60 días
+    # (hora de Bogotá). Se valida aquí porque "hoy" depende de la zona horaria.
+    @staticmethod
+    def _resolve_delivery_date(requested: date | None) -> date:
+        today = today_bogota()
+        if requested is None:
+            return today
+        if requested < today:
+            raise BusinessValidationError(
+                "El día de entrega no puede ser anterior a hoy.",
+                field="delivery_date",
+                code="DELIVERY_DATE_IN_PAST",
+            )
+        if requested > today + timedelta(days=MAX_SCHEDULE_DAYS):
+            raise BusinessValidationError(
+                f"Solo se pueden programar pedidos hasta {MAX_SCHEDULE_DAYS} días "
+                "adelante.",
+                field="delivery_date",
+                code="DELIVERY_DATE_TOO_FAR",
+            )
+        return requested
 
     def _ensure_vehicle(self, db: Session, id_user_vehicle: int) -> None:
         self._ensure_reference(
@@ -273,6 +302,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         id_client: int,
         id_user_taker: int,
         items: list[OrderItemInput],
+        delivery_date: date,
         estimated_delivery=None,
         id_user_vehicle: int | None = None,
         id_route: int | None = None,
@@ -280,7 +310,8 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         order = order_repository.add(
             db,
             obj_in_data={
-                "purchase_order": self._next_purchase_order(db),
+                "purchase_order": self._next_purchase_order(db, delivery_date),
+                "delivery_date": delivery_date,
                 "estimated_delivery": estimated_delivery,
                 "id_client": id_client,
                 "id_user_vehicle": id_user_vehicle,
@@ -361,7 +392,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                     unit_price=row.agreed_price,  # type: ignore
                 )  # type: ignore
             )
-        existing = order_repository.get_route_orders_today(db, id_route)
+        existing = order_repository.get_route_orders_on(db, id_route, today_bogota())
 
         return RouteOrderTemplateResponse(
             id_route=route.id_route,
@@ -424,7 +455,8 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 code="CLIENT_NOT_IN_ROUTE",
             )
 
-        existing = order_repository.get_route_orders_today(db, id_route)
+        today = today_bogota()
+        existing = order_repository.get_route_orders_on(db, id_route, today)
         already = [i for i in client_ids if i in existing]
         if already:
             raise ConflictError(
@@ -464,6 +496,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 id_client=client_order.id_client,
                 id_user_taker=id_user_taker,
                 items=items_by_client[client_order.id_client],
+                delivery_date=today,
                 estimated_delivery=obj_in.estimated_delivery,
                 id_user_vehicle=obj_in.id_user_vehicle,
                 id_route=id_route,
@@ -475,14 +508,16 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             db.refresh(order)
         return orders
 
-    # Consecutivo del día ("001", "002", ...). Lo asigna el servidor, nunca el
-    # cliente; los pedidos de días anteriores conservan el número que recibieron.
-    def _next_purchase_order(self, db: Session) -> str:
-        number = order_repository.next_daily_number(db)
+    # Consecutivo del día de entrega ("001", "002", ...). Lo asigna el servidor,
+    # nunca el cliente; los pedidos de otros días conservan el número que
+    # recibieron. Va por día de entrega para que el tablero de un día no repita PO.
+    def _next_purchase_order(self, db: Session, day: date) -> str:
+        number = order_repository.next_daily_number(db, day)
         if number > MAX_DAILY_ORDERS:
             # La excepción revierte la transacción, incluido el incremento
             raise BusinessRuleViolationError(
-                f"Se alcanzó el máximo de {MAX_DAILY_ORDERS} pedidos del día.",
+                f"Se alcanzó el máximo de {MAX_DAILY_ORDERS} pedidos para el día "
+                f"{day.isoformat()}.",
                 rule_code="DAILY_ORDER_LIMIT",
             )
         return f"{number:03d}"
@@ -496,6 +531,15 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 f"Solo se pueden despachar pedidos en estado 'PENDING'. "
                 f"Estado actual: '{order.state.value}'.",
                 field="state",
+            )
+
+        if order.delivery_date > today_bogota():
+            raise BusinessValidationError(
+                "El pedido está programado para el "
+                f"{order.delivery_date.isoformat()}; no se puede despachar antes "
+                "de ese día.",
+                field="delivery_date",
+                code="ORDER_SCHEDULED",
             )
 
         order.state = OrderState.DISPATCHED
@@ -666,6 +710,15 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
     def update(self, db: Session, *, id: int, obj_in: OrderUpdate) -> Order:
         db_obj = self.get_for_update(db, id)
         self._validate_before_update(db, obj_in, db_obj)
+        new_date = obj_in.delivery_date
+        if (
+            "delivery_date" in obj_in.model_fields_set
+            and new_date is not None
+            and new_date != db_obj.delivery_date
+        ):
+            # Cambia de día: recibe el consecutivo del día de destino (conservar
+            # el anterior podría repetir un PO en el tablero de ese día)
+            db_obj.purchase_order = self._next_purchase_order(db, new_date)
         return self.repository.update(db, db_obj=db_obj, obj_in=obj_in)
 
     def _validate_before_update(
@@ -676,10 +729,30 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         if existing.state in self._FINAL_STATES:
             raise BusinessValidationError(
                 f"No se puede modificar un pedido en estado '{existing.state.value}'.",
-                field="estimated_delivery"
-                if "estimated_delivery" in sent
-                else "id_user_vehicle",
+                field=next(
+                    (
+                        name
+                        for name in ("estimated_delivery", "delivery_date")
+                        if name in sent
+                    ),
+                    "id_user_vehicle",
+                ),
             )
+        if "delivery_date" in sent:
+            if obj_in.delivery_date is None:
+                raise BusinessValidationError(
+                    "El día de entrega no se puede quitar.",
+                    field="delivery_date",
+                    code="DELIVERY_DATE_REQUIRED",
+                )
+            if existing.state != OrderState.PENDING:
+                raise BusinessValidationError(
+                    "El día de entrega solo se puede cambiar en pedidos pendientes "
+                    f"(estado actual: '{existing.state.value}').",
+                    field="delivery_date",
+                )
+            if obj_in.delivery_date != existing.delivery_date:
+                self._resolve_delivery_date(obj_in.delivery_date)
         # El conductor se puede cambiar hasta que el pedido sea final, pero la
         # hora estimada solo tiene sentido antes de despachar.
         if "estimated_delivery" in sent and existing.state != OrderState.PENDING:

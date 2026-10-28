@@ -27,9 +27,11 @@ def _count(db, model) -> int:
 
 
 def _move_to(db, order: dict, month) -> None:
-    db.get(Order, order["id_order"]).creation_datetime = datetime.combine(
+    row = db.get(Order, order["id_order"])
+    row.creation_datetime = datetime.combine(
         month.replace(day=10), time(12, 0), tzinfo=BOGOTA_TZ
     )
+    row.delivery_date = month.replace(day=10)
     db.commit()
 
 

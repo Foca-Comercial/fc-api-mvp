@@ -24,7 +24,7 @@ class OrderHistoryFilters:
 class OrderHistoryRow(BaseModel):
     id_order: int
     purchase_order: str
-    order_date: date = Field(..., description="Día de creación (Bogotá)")
+    order_date: date = Field(..., description="Día de entrega (Bogotá)")
     creation_time: str = Field(..., description="Hora de creación HH:MM (Bogotá)")
     client_name: str
     zone_name: str
