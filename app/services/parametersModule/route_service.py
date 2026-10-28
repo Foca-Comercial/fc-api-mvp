@@ -32,6 +32,10 @@ class RouteService(BaseService[Route, RouteCreate, RouteUpdate]):
     def get_cards(
         self, db: Session, *, only_active: bool = False
     ) -> list[RouteCardResponse]:
+        rows = route_repository.get_cards(db, only_active=only_active)
+        summary = route_repository.get_clients_summary(
+            db, [route.id_route for route, _ in rows]
+        )
         return [
             RouteCardResponse(
                 id_route=route.id_route,
@@ -40,10 +44,10 @@ class RouteService(BaseService[Route, RouteCreate, RouteUpdate]):
                 departure_time=route.departure_time,
                 active=route.active,
                 clients_count=clients_count,
+                client_names=summary.get(route.id_route, ([], []))[0],
+                zones=summary.get(route.id_route, ([], []))[1],
             )
-            for route, clients_count in route_repository.get_cards(
-                db, only_active=only_active
-            )
+            for route, clients_count in rows
         ]
 
     def get_clients(self, db: Session, id_route: int) -> list[RouteClientResponse]:
@@ -73,7 +77,7 @@ class RouteService(BaseService[Route, RouteCreate, RouteUpdate]):
             db, client_repository, id_client, field="id_client", label="Cliente"
         )
         # Los clientes temporales (creados desde un pedido) no se asignan a rutas
-        if not client_repository.get(db, id_client).is_registered:
+        if not client_repository.get(db, id_client).is_registered:  # type: ignore
             raise BusinessValidationError(
                 "Solo se pueden asignar a una ruta clientes registrados.",
                 field="id_client",

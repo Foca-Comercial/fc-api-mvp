@@ -789,9 +789,12 @@ datos de un cliente existente en el flujo de registro de pedido. Solo devuelve c
   (`creation_time`) se calculan sobre `creation_datetime` convertido a hora de Bogotá en
   SQL; el "día" de un pedido es el de su creación.
 - **`GET /orders/{id}/details`** (`GESTOR_COMERCIAL`): detalle completo para el modal —
-  items (con `id_order_detail`, para editarlos luego vía `PUT /items-order`), cliente,
-  barrio, zona y conductor. `driver_code` / `driver_name` llegan en `null` si el pedido no
-  tiene conductor asignado. Es la misma consulta que alimenta el PDF.
+  items (con `id_order_detail`, para editarlos luego vía `PUT /items-order`), cliente
+  (con su `id_client`, para pedir el catálogo con sus precios pactados al editar),
+  barrio, zona y conductor. `id_user_vehicle`, `driver_code` y `driver_name` llegan en
+  `null` si el pedido no tiene conductor asignado (el `id_user_vehicle` permite preseleccionar
+  el conductor al editar). Incluye `dispatch_time` y `delivery_time` (`null` mientras no
+  aplique). Es la misma consulta que alimenta el PDF.
 
 ### Vista de Rutas
 
@@ -799,8 +802,10 @@ Roles: `GESTOR_COMERCIAL` (y `ADMINISTRADOR`). Desactivar/eliminar una ruta
 (`DELETE /routes/{id}`) sigue siendo solo de `ADMINISTRADOR`.
 
 - **`GET /routes/cards?only_active=false`**: una card por ruta con nombre, `days_week`,
-  hora de salida, estado y `clients_count` (clientes **activos** asignados). Incluye las
-  rutas inactivas salvo `only_active=true`.
+  hora de salida, estado y `clients_count` (clientes **activos** asignados), más
+  `client_names` y `zones` (nombres y zonas de esos mismos clientes, A-Z, sacados en una
+  sola consulta para todas las cards). Incluye las rutas inactivas salvo
+  `only_active=true`.
 - **`POST /routes/`** y **`PATCH /routes/{id}`**: crear y editar (`days_week` como lista,
   ver sección 4).
 - **`GET /routes/{id}/clients`**: clientes asignados, con teléfono, dirección, barrio, zona
@@ -821,7 +826,8 @@ endpoints anidados bajo `/routes/{id}/clients`.
 Flujo plantilla → formulario → POST (`GESTOR_COMERCIAL`):
 
 1. **`GET /orders/routes-of-day?target_date=`**: rutas activas que salen ese día de la
-   semana, con `clients_count` y cuántos pedidos de ese día salieron de cada una.
+   semana, con `clients_count` (+ `client_names` y `zones` de esos clientes registrados y
+   activos) y cuántos pedidos de ese día salieron de cada una.
 2. **`GET /orders/routes/{id}/template`**: precarga del formulario. Por cada cliente de la
    ruta (registrado y activo): sus datos, `existing_order_id` si ya tiene pedido de hoy
    desde esa ruta y **solo sus productos con precio especial** (productos activos de
@@ -939,9 +945,12 @@ PENDING ──(/dispatch)──> DISPATCHED ──(/deliver)──> DELIVERED
 CANCELLED es estado terminal alcanzable desde los anteriores (gestión pendiente de endpoint dedicado)
 ```
 
-- **`PATCH /orders/{id}`** (`GESTOR_COMERCIAL`): body `{"id_user_vehicle": <id> | null}`.
-  Único campo editable (asignar, reasignar o desasignar conductor). Bloqueado si el pedido
-  está en `DELIVERED` o `CANCELLED` (estados finales).
+- **`PATCH /orders/{id}`** (`GESTOR_COMERCIAL`): PATCH parcial, solo se modifica lo enviado.
+  Campos editables: `id_user_vehicle` (asignar, reasignar o desasignar conductor; `null`
+  desasigna) y `estimated_delivery` (hora estimada; `null` la quita). Bloqueado por completo
+  si el pedido está en `DELIVERED` o `CANCELLED` (estados finales). La hora estimada solo se
+  puede cambiar en `PENDING` (422 con `field: "estimated_delivery"` si ya fue despachado);
+  el conductor sí se puede cambiar estando `DISPATCHED`.
 - **`POST /orders/{id}/dispatch`** (`GESTOR_COMERCIAL`): valida `state == PENDING`, cambia a
   `DISPATCHED`, registra `dispatch_time` (hora de Bogotá). No valida que haya conductor
   asignado — decisión de negocio explícita del cliente (empresa).

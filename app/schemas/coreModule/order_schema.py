@@ -56,8 +56,15 @@ class OrderCreateExistingClient(OrderCreateBase):
 # No hereda de OrderBase a propósito (purchase_order, order_total e id_client
 # no deben modificarse por esta vía; los items van por sync_items).
 class OrderUpdate(BaseModel):
+    """PATCH parcial: solo se modifica lo enviado."""
+
     id_user_vehicle: int | None = Field(
         None, description="Vehículo a asignar (null para desasignar)"
+    )
+    estimated_delivery: time | None = Field(
+        None,
+        description="Hora estimada de entrega (null para quitarla). "
+        "Solo editable mientras el pedido está PENDING",
     )
 
 
@@ -134,10 +141,12 @@ class OrderFullDetailResponse(BaseModel):
     creation_datetime: datetime
     estimated_delivery: time | None
     dispatch_time: time | None
+    delivery_time: time | None
     state: str
     order_total: Decimal
 
     # Datos del Cliente Expandidos
+    id_client: int
     client_name: str
     client_phone: str | None
     client_address: str | None
@@ -145,6 +154,7 @@ class OrderFullDetailResponse(BaseModel):
     zone_name: str
 
     # Datos del Domiciliario (Si aplica)
+    id_user_vehicle: int | None
     driver_code: str | None
     driver_name: str | None
 

@@ -121,6 +121,20 @@ def test_rutas_del_dia_segun_dia_de_la_semana(client, route, db):
     assert row["orders_count"] == 0
 
 
+def test_rutas_del_dia_traen_nombres_y_zonas_de_los_clientes_pedibles(client, route):
+    routes = client.get(f"{API}/orders/routes-of-day?target_date={MONDAY}").json()
+
+    row = next(r for r in routes if r["id_route"] == route.route.id_route)
+    # Solo registrados y activos (sin el temporal ni el inactivo), de la A a la Z
+    assert row["client_names"] == [
+        "CLIENTE REGISTRADO",
+        "OTRO REGISTRADO",
+        "SIN PRECIOS ESPECIALES",
+    ]
+    assert row["zones"] == ["ZONA TEST"]
+    assert len(row["client_names"]) == row["clients_count"]
+
+
 def test_rutas_del_dia_por_defecto_es_hoy(client, route):
     response = client.get(f"{API}/orders/routes-of-day")
 

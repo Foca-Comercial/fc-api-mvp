@@ -183,13 +183,16 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             creation_datetime=order.creation_datetime,
             estimated_delivery=order.estimated_delivery,
             dispatch_time=order.dispatch_time,
+            delivery_time=order.delivery_time,
             state=order.state,
             order_total=order.order_total,  # type: ignore
+            id_client=order.id_client,
             client_name=order.client.name,
             client_phone=order.client.phone,
             client_address=order.client.address,
             neighborhood_name=order.client.neighborhood.name,
             zone_name=order.client.neighborhood.zone.name,
+            id_user_vehicle=order.id_user_vehicle,
             driver_code=driver_code,
             driver_name=driver_name,
             items=items,
@@ -317,6 +320,9 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         rows = route_repository.get_routes_of_day(
             db, target_date.isoweekday(), target_date
         )
+        summary = route_repository.get_clients_summary(
+            db, [route.id_route for route, _, _ in rows], registered_only=True
+        )
         return [
             RouteOfDayResponse(
                 id_route=route.id_route,
@@ -324,6 +330,8 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 departure_time=route.departure_time,
                 days_week=route.days_week,
                 clients_count=clients_count,
+                client_names=summary.get(route.id_route, ([], []))[0],
+                zones=summary.get(route.id_route, ([], []))[1],
                 orders_count=orders_count,
             )
             for route, clients_count, orders_count in rows
@@ -653,7 +661,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
 
     _FINAL_STATES = (OrderState.DELIVERED, OrderState.CANCELLED)
 
-    # PATCH (reasignar conductor): mismo flujo que BaseService.update, pero
+    # PATCH (conductor y hora estimada): mismo flujo que BaseService.update, pero
     # bloqueando la fila, porque la validación depende del estado del pedido.
     def update(self, db: Session, *, id: int, obj_in: OrderUpdate) -> Order:
         db_obj = self.get_for_update(db, id)
@@ -664,11 +672,21 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         self, db: Session, obj_in: OrderUpdate, existing: Order
     ) -> None:
         super()._validate_before_update(db, obj_in, existing)
+        sent = obj_in.model_fields_set
         if existing.state in self._FINAL_STATES:
             raise BusinessValidationError(
-                f"No se puede reasignar el conductor de un pedido en estado "
-                f"'{existing.state.value}'.",
-                field="id_user_vehicle",
+                f"No se puede modificar un pedido en estado '{existing.state.value}'.",
+                field="estimated_delivery"
+                if "estimated_delivery" in sent
+                else "id_user_vehicle",
+            )
+        # El conductor se puede cambiar hasta que el pedido sea final, pero la
+        # hora estimada solo tiene sentido antes de despachar.
+        if "estimated_delivery" in sent and existing.state != OrderState.PENDING:
+            raise BusinessValidationError(
+                "La hora estimada solo se puede cambiar en pedidos pendientes "
+                f"(estado actual: '{existing.state.value}').",
+                field="estimated_delivery",
             )
 
 

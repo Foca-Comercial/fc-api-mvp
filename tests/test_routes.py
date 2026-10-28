@@ -120,6 +120,35 @@ def test_cards_cuentan_solo_clientes_activos(client, db, data):
     assert cards[norte["id_route"]]["days_week"] == [1, 4]
 
 
+def test_cards_traen_nombres_y_zonas_de_los_clientes_activos(client, db, data):
+    norte = _post_route(client, name="ruta norte")
+    sur = _post_route(client, name="ruta sur", days=(3,))
+    inactive = _new_client(db, data, "CLIENTE INACTIVO", active=False)
+    other = _new_client(db, data, "ALFA CLIENTE")
+    client.post(
+        f"{API}/routes/{norte['id_route']}/clients",
+        json={"id_client": data.client.id_client},
+    )
+    # asignados directamente: la API solo asigna clientes registrados y activos
+    db.add_all(
+        ClientRoute(id_route=norte["id_route"], id_client=c.id_client)
+        for c in (other, inactive)
+    )
+    db.commit()
+
+    cards = {c["id_route"]: c for c in client.get(f"{API}/routes/cards").json()}
+
+    card = cards[norte["id_route"]]
+    assert card["client_names"] == [
+        "ALFA CLIENTE",
+        "CLIENTE REGISTRADO",
+    ]  # A-Z, sin el inactivo
+    assert card["zones"] == ["ZONA TEST"]  # sin repetir
+    assert len(card["client_names"]) == card["clients_count"]
+    assert cards[sur["id_route"]]["client_names"] == []
+    assert cards[sur["id_route"]]["zones"] == []
+
+
 def test_cards_incluyen_rutas_inactivas_salvo_que_se_filtre(client):
     active = _post_route(client, name="ruta activa")
     inactive = _post_route(client, name="ruta inactiva", active=False)
