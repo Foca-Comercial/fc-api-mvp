@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Date, case, cast, func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased, joinedload
 
@@ -19,11 +19,6 @@ from app.models.securityModule.person import Person
 from app.models.securityModule.user import User
 from app.models.securityModule.user_role import UserRole
 from app.repositories.base_repository import BaseRepository
-from app.repositories.time_filters import (
-    between_bogota_dates,
-    on_bogota_day,
-    on_db_today,
-)
 from app.schemas.coreModule.order_history_schema import OrderHistoryFilters
 from app.schemas.coreModule.order_schema import OrderCreate, OrderUpdate
 from app.utils.enums.order_state import OrderState
@@ -33,16 +28,13 @@ BILLABLE_STATES = (OrderState.DISPATCHED, OrderState.DELIVERED)
 
 
 class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
-    # Siguiente consecutivo del día (hora de Bogotá). Debe llamarse dentro de la
-    # misma transacción que inserta el pedido: bloquea la fila del día hasta el
-    # commit y se revierte junto con él.
-    def next_daily_number(self, db: Session) -> int:
-        # now() es la hora de inicio de la transacción: el mismo instante que
-        # recibirá creation_datetime (server_default), así el día coincide.
-        today = cast(func.timezone(BOGOTA_TZ.key, func.now()), Date)
+    # Siguiente consecutivo del día de entrega `day`. Debe llamarse dentro de la
+    # misma transacción que inserta (o reprograma) el pedido: bloquea la fila del
+    # día hasta el commit y se revierte junto con ella.
+    def next_daily_number(self, db: Session, day: date) -> int:
         stmt = (
             insert(DailyOrderCounter)
-            .values(counter_date=today, last_value=1)
+            .values(counter_date=day, last_value=1)
             .on_conflict_do_update(
                 index_elements=[DailyOrderCounter.counter_date],
                 set_={"last_value": DailyOrderCounter.last_value + 1},
@@ -51,17 +43,19 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
         )
         return db.scalar(stmt)  # type: ignore
 
-    # Pedidos de HOY (día de Bogotá según la BD) generados desde la ruta, sin
-    # cancelados: {id_client: id_order}. Evita generar dos veces la misma ruta.
-    def get_route_orders_today(self, db: Session, id_route: int) -> dict[int, int]:
+    # Pedidos del día `day` generados desde la ruta, sin cancelados:
+    # {id_client: id_order}. Evita generar dos veces la misma ruta.
+    def get_route_orders_on(
+        self, db: Session, id_route: int, day: date
+    ) -> dict[int, int]:
         stmt = select(Order.id_client, Order.id_order).where(
             Order.id_route == id_route,
             Order.state != OrderState.CANCELLED,
-            on_db_today(Order.creation_datetime),
+            Order.delivery_date == day,
         )
         return {row.id_client: row.id_order for row in db.execute(stmt).all()}
 
-    # Tabla principal: pedidos del día por gestionar (pendientes y cancelados)
+    # Tabla principal: pedidos del día de entrega por gestionar (pendientes y cancelados)
     def get_daily_summary(self, db: Session, target_date: date) -> list[tuple]:
         return self._summary_by_states(
             db, target_date, (OrderState.PENDING, OrderState.CANCELLED)
@@ -77,7 +71,7 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
         self, db: Session, target_date: date, states: tuple[OrderState, ...]
     ) -> list[tuple]:
         # creation_datetime es TIMESTAMPTZ: se convierte a hora local de Bogotá
-        # antes de extraer fecha/hora, sin depender de la zona de la sesión.
+        # antes de extraer la hora, sin depender de la zona de la sesión.
         created_local = func.timezone(BOGOTA_TZ.key, Order.creation_datetime)
         stmt = (
             select(
@@ -107,8 +101,8 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .outerjoin(User, UserRole.id_user == User.id_user)
             .outerjoin(Person, User.id_person == Person.id_person)
             .where(
-                # 1. Filtrar solo los del día indicado (por defecto hoy)
-                on_bogota_day(Order.creation_datetime, target_date),
+                # 1. Filtrar solo los del día de entrega indicado (por defecto hoy)
+                Order.delivery_date == target_date,
                 # 2. Solo los estados que corresponden a la vista
                 Order.state.in_(states),
             )
@@ -130,21 +124,17 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
     # ------------------------------------------------------------------
     @staticmethod
     def _history_conditions(filters: OrderHistoryFilters) -> list:
-        conditions = [
-            between_bogota_dates(
-                Order.creation_datetime, filters.date_from, filters.date_to
-            )
-        ]
+        conditions = [Order.delivery_date.between(filters.date_from, filters.date_to)]
         if filters.state is not None:
-            conditions.append(Order.state == filters.state)
+            conditions.append(Order.state == filters.state)  # type: ignore
         if filters.id_route is not None:
-            conditions.append(Order.id_route == filters.id_route)
+            conditions.append(Order.id_route == filters.id_route)  # type: ignore
         if filters.id_user_vehicle is not None:
-            conditions.append(Order.id_user_vehicle == filters.id_user_vehicle)
+            conditions.append(Order.id_user_vehicle == filters.id_user_vehicle)  # type: ignore
         if filters.search:
             term = filters.search.strip()
             conditions.append(
-                or_(Client.name.ilike(f"%{term}%"), Order.purchase_order == term)
+                or_(Client.name.ilike(f"%{term}%"), Order.purchase_order == term)  # type: ignore
             )
         return conditions
 
@@ -190,7 +180,7 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             select(
                 Order.id_order,
                 Order.purchase_order,
-                cast(created_local, Date).label("order_date"),
+                Order.delivery_date.label("order_date"),
                 func.to_char(created_local, "HH24:MI").label("creation_time"),
                 Client.name.label("client_name"),
                 Zone.name.label("zone_name"),
@@ -214,7 +204,11 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .outerjoin(User, User.id_user == UserRole.id_user)
             .outerjoin(Person, Person.id_person == User.id_person)
             .where(*self._history_conditions(filters))
-            .order_by(Order.creation_datetime.desc(), Order.id_order.desc())
+            .order_by(
+                Order.delivery_date.desc(),
+                Order.creation_datetime.desc(),
+                Order.id_order.desc(),
+            )
             .offset(offset)
             .limit(limit)
         )
@@ -233,7 +227,7 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
         stmt = (
             select(
                 Order.id_order,
-                cast(created_local, Date).label("order_date"),
+                Order.delivery_date.label("order_date"),
                 func.to_char(created_local, "HH24:MI").label("creation_time"),
                 Order.purchase_order,
                 Client.name.label("client_name"),
@@ -268,8 +262,16 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .outerjoin(UserRole, UserRole.id_user_role == UserVehicle.id_user_role)
             .outerjoin(DriverUser, DriverUser.id_user == UserRole.id_user)
             .outerjoin(DriverPerson, DriverPerson.id_person == DriverUser.id_person)
-            .where(Order.creation_datetime >= start, Order.creation_datetime < end)
-            .order_by(Order.creation_datetime, Order.id_order, Product.code)
+            # Mes de la fecha de entrega: el mismo criterio del cierre y la purga
+            .where(
+                Order.delivery_date >= start.date(), Order.delivery_date < end.date()
+            )
+            .order_by(
+                Order.delivery_date,
+                Order.creation_datetime,
+                Order.id_order,
+                Product.code,
+            )
         )
         return list(db.execute(stmt).all())
 
@@ -280,7 +282,7 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
     def count_by_state_on_day(self, db: Session, day: date) -> dict[OrderState, int]:
         stmt = (
             select(Order.state, func.count(Order.id_order))
-            .where(on_bogota_day(Order.creation_datetime, day))
+            .where(Order.delivery_date == day)
             .group_by(Order.state)
         )
         return {state: count for state, count in db.execute(stmt).all()}
@@ -291,7 +293,7 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
         stmt = (
             select(Order.id_user_vehicle, func.count(Order.id_order))
             .where(
-                on_bogota_day(Order.creation_datetime, day),
+                Order.delivery_date == day,
                 Order.state.in_(BILLABLE_STATES),
             )
             .group_by(Order.id_user_vehicle)
@@ -314,7 +316,7 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .join(OrderDetail, OrderDetail.id_order == Order.id_order)
             .join(Product, Product.id_product == OrderDetail.id_product)
             .where(
-                on_bogota_day(Order.creation_datetime, day),
+                Order.delivery_date == day,
                 Order.state.in_(BILLABLE_STATES),
             )
             .group_by(

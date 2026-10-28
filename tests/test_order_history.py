@@ -15,10 +15,10 @@ URL = f"{API}/orders/history"
 
 
 def _move(db, order: dict, day: date, hour: int = 10) -> None:
-    """Cambia la fecha de creación de un pedido (hora local de Bogotá)."""
-    db.get(Order, order["id_order"]).creation_datetime = datetime.combine(
-        day, time(hour, 0), tzinfo=BOGOTA_TZ
-    )
+    """Cambia la fecha de un pedido: creación y entrega (hora local de Bogotá)."""
+    row = db.get(Order, order["id_order"])
+    row.creation_datetime = datetime.combine(day, time(hour, 0), tzinfo=BOGOTA_TZ)
+    row.delivery_date = day
     db.commit()
 
 

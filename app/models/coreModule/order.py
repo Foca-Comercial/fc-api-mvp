@@ -1,10 +1,11 @@
-from datetime import datetime, time
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     String,
     Time,
     func,
+    text,
 )
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -40,6 +42,8 @@ class Order(Base):
         Index("idx_sale_order_route", "id_route"),
         # Filtros por día/mes (dashboard, rutas del día, histórico, archivado)
         Index("idx_sale_order_creation_datetime", "creation_datetime"),
+        # Día en que se atiende el pedido: tablero, rutas, cierre, archivado
+        Index("idx_sale_order_delivery_date", "delivery_date"),
     )
 
     id_order: Mapped[int] = mapped_column(
@@ -48,6 +52,15 @@ class Order(Base):
     purchase_order: Mapped[str] = mapped_column(String(3), nullable=False)
     creation_datetime: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # Día en que se atiende el pedido (hora de Bogotá). Normalmente es el día de
+    # creación; un pedido programado lo trae en el futuro. Es el "día" del tablero,
+    # el cierre, el consecutivo y el archivado; creation_datetime queda como
+    # marca real de cuándo se tomó el pedido.
+    delivery_date: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+        server_default=text("(timezone('America/Bogota', now()))::date"),
     )
     estimated_delivery: Mapped[time | None] = mapped_column(Time, nullable=True)
     dispatch_time: Mapped[time | None] = mapped_column(Time, nullable=True)

@@ -1,6 +1,6 @@
 """Consultas de pedidos para la UI: detalle, comprobante PDF y dashboards."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from app.models.coreModule.order import Order
 from tests.helpers import API
@@ -105,9 +105,9 @@ def test_pedido_entregado_sigue_en_vista_de_despachados(client, create_order):
 def test_dashboard_usa_el_dia_y_la_hora_de_bogota(client, create_order, db):
     """04:30 UTC del 15 de octubre = 23:30 del 14 de octubre en Bogotá (UTC-5)."""
     order = create_order()
-    db.get(Order, order["id_order"]).creation_datetime = datetime(
-        2026, 10, 15, 4, 30, tzinfo=UTC
-    )
+    row = db.get(Order, order["id_order"])
+    row.creation_datetime = datetime(2026, 10, 15, 4, 30, tzinfo=UTC)
+    row.delivery_date = date(2026, 10, 14)  # el día de Bogotá de esa hora
     db.flush()
 
     day_14 = client.get(f"{API}/orders/dashboard-summary?target_date=2026-10-14")

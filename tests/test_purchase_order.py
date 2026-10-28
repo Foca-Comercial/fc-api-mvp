@@ -72,7 +72,9 @@ def test_pedidos_de_dias_anteriores_conservan_su_numero(db, create_order):
     _set_counter(db, yesterday, 50)
 
     old = create_order()  # recibe 001 de hoy; lo movemos a ayer
-    db.get(Order, old["id_order"]).creation_datetime -= timedelta(days=1)
+    old_row = db.get(Order, old["id_order"])
+    old_row.creation_datetime -= timedelta(days=1)
+    old_row.delivery_date = yesterday
     db.commit()
 
     create_order()

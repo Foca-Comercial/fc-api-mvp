@@ -8,7 +8,6 @@ from app.models.parametersModule.neighborhood import Neighborhood
 from app.models.parametersModule.route import Route
 from app.models.parametersModule.zone import Zone
 from app.repositories.base_repository import BaseRepository
-from app.repositories.time_filters import on_bogota_day
 from app.schemas.parametersModule.route_schema import RouteCreate, RouteUpdate
 from app.utils.enums.order_state import OrderState
 
@@ -180,7 +179,7 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
             .where(
                 Order.id_route == Route.id_route,
                 Order.state != OrderState.CANCELLED,
-                on_bogota_day(Order.creation_datetime, orders_date),
+                Order.delivery_date == orders_date,
             )
             .correlate(Route)
             .scalar_subquery()

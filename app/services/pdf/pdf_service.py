@@ -187,7 +187,7 @@ class PdfService:
             order.dispatch_time.strftime("%H:%M:%S") if order.dispatch_time else "—"
         )
         rows = [
-            ("Fecha", created.strftime("%Y-%m-%d")),
+            ("Fecha", order.delivery_date.strftime("%Y-%m-%d")),
             ("Generación", created.strftime("%H:%M:%S")),
             ("Hora despacho", dispatch),
             ("Cliente", DEFAULT_CLIENT["name"]),
