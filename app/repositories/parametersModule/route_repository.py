@@ -1,15 +1,40 @@
-from sqlalchemy import and_, any_, exists, func, select
+from typing import Any
+
+from sqlalchemy import Select, and_, any_, exists, func, select
 from sqlalchemy.orm import Session
 
 from app.models.coreModule.client import Client
 from app.models.coreModule.client_route import ClientRoute
 from app.models.coreModule.order import Order
+from app.models.coreModule.product import Product
+from app.models.coreModule.special_customer_price import SpecialCustomerPrice
 from app.models.parametersModule.neighborhood import Neighborhood
 from app.models.parametersModule.route import Route
 from app.models.parametersModule.zone import Zone
 from app.repositories.base_repository import BaseRepository
-from app.schemas.parametersModule.route_schema import RouteCreate, RouteUpdate
+from app.repositories.pagination import paginate
+from app.schemas.common.page_schema import PageParams
+from app.schemas.parametersModule.route_schema import (
+    RouteAdminFilters,
+    RouteCreate,
+    RouteUpdate,
+)
 from app.utils.enums.order_state import OrderState
+
+
+def _special_prices_count():
+    """Productos ACTIVOS con precio especial del cliente (subconsulta por fila): los
+    únicos que se le pueden pedir desde una ruta."""
+    return (
+        select(func.count(SpecialCustomerPrice.id_client_price))
+        .join(Product, Product.id_product == SpecialCustomerPrice.id_product)
+        .where(
+            SpecialCustomerPrice.id_client == Client.id_client,
+            Product.active.is_(True),
+        )
+        .correlate(Client)
+        .scalar_subquery()
+    )
 
 
 class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
@@ -95,6 +120,7 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
                 Neighborhood.name.label("neighborhood_name"),
                 Zone.name.label("zone_name"),
                 Client.active,
+                _special_prices_count().label("special_prices_count"),
             )
             .join(Client, Client.id_client == ClientRoute.id_client)
             .join(Neighborhood, Neighborhood.id_neighborhood == Client.id_neighborhood)
@@ -120,6 +146,7 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
                 Client.address,
                 Neighborhood.name.label("neighborhood_name"),
                 Zone.name.label("zone_name"),
+                _special_prices_count().label("special_prices_count"),
             )
             .join(Neighborhood, Neighborhood.id_neighborhood == Client.id_neighborhood)
             .join(Zone, Zone.id_zone == Neighborhood.id_zone)
@@ -194,6 +221,56 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
             .order_by(Route.departure_time, Route.name)
         )
         return list(db.execute(stmt).all())
+
+    # ------------------------------------------------------------------
+    # Panel de administración
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _admin_conditions(filters: RouteAdminFilters) -> list[Any]:
+        conditions: list[Any] = []
+        if filters.search:
+            conditions.append(Route.name.icontains(filters.search, autoescape=True))
+        if filters.active is not None:
+            conditions.append(Route.active.is_(filters.active))
+        if filters.day is not None:
+            conditions.append(int(filters.day) == any_(Route.days_week))
+        return conditions
+
+    @staticmethod
+    def _admin_select() -> Select:
+        # Clientes activos asignados (subconsulta: solo para las filas de la página)
+        clients_count = (
+            select(func.count(ClientRoute.id_client_route))
+            .join(Client, Client.id_client == ClientRoute.id_client)
+            .where(ClientRoute.id_route == Route.id_route, Client.active.is_(True))
+            .correlate(Route)
+            .scalar_subquery()
+        )
+        return select(
+            Route.id_route,
+            Route.name,
+            Route.days_week,
+            Route.departure_time,
+            Route.active,
+            clients_count.label("clients_count"),
+        )
+
+    # Una página de rutas, por nombre
+    def get_admin_page(
+        self, db: Session, filters: RouteAdminFilters, params: PageParams
+    ) -> tuple[list[Any], int]:
+        conditions = self._admin_conditions(filters)
+        stmt = (
+            self._admin_select()
+            .where(*conditions)
+            .order_by(Route.name, Route.id_route)
+        )
+        count_stmt = select(Route.id_route).where(*conditions)
+        return paginate(db, stmt, params, count_stmt=count_stmt)
+
+    def get_admin_row(self, db: Session, id_route: int) -> Any | None:
+        stmt = self._admin_select().where(Route.id_route == id_route)
+        return db.execute(stmt).one_or_none()
 
 
 # Intancia del repositorio inyectando el modelo ORM

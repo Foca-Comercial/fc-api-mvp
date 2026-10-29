@@ -1,9 +1,13 @@
 from fastapi import Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import get_page_params
 from app.api.routers.auth.secured_router import SecuredRouter
 from app.db.database import get_db
+from app.schemas.common.page_schema import Page, PageParams
 from app.schemas.parametersModule.route_schema import (
+    RouteAdminFilters,
+    RouteAdminRow,
     RouteAvailableClientResponse,
     RouteCardResponse,
     RouteClientAssign,
@@ -13,6 +17,7 @@ from app.schemas.parametersModule.route_schema import (
     RouteUpdate,
 )
 from app.services.parametersModule.route_service import route_service
+from app.utils.enums.day_week import DayWeek
 from app.utils.enums.delete_type import DeletionType
 
 router = SecuredRouter(prefix="/routes", tags=["Routes"])
@@ -35,6 +40,27 @@ def get_route_cards(
     db: Session = Depends(get_db),  # noqa: B008
 ):
     return route_service.get_cards(db, only_active=only_active)
+
+
+# Panel de administración (solo ADMINISTRADOR). Literal antes de /{route_id}
+@router.get("/admin", response_model=Page[RouteAdminRow])
+def list_routes_admin(
+    search: str | None = Query(
+        None, min_length=1, max_length=50, description="Nombre (contiene)"
+    ),
+    active: bool | None = Query(None, description="Sin valor: activas e inactivas"),
+    day: DayWeek | None = Query(  # noqa: B008
+        None, description="Rutas que salen ese día (1 = lunes ... 7 = domingo)"
+    ),
+    params: PageParams = Depends(get_page_params),  # noqa: B008
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    filters = RouteAdminFilters(
+        search=search.strip() if search and search.strip() else None,
+        active=active,
+        day=day,
+    )
+    return route_service.get_admin_page(db, filters=filters, params=params)
 
 
 @router.get("/{route_id}", response_model=RouteResponse, roles=ROUTE_READERS)

@@ -4,7 +4,10 @@ from app.models.parametersModule.route import Route
 from app.repositories.coreModule.client_repository import client_repository
 from app.repositories.coreModule.client_route_repository import client_route_repository
 from app.repositories.parametersModule.route_repository import route_repository
+from app.schemas.common.page_schema import Page, PageParams
 from app.schemas.parametersModule.route_schema import (
+    RouteAdminFilters,
+    RouteAdminRow,
     RouteAvailableClientResponse,
     RouteCardResponse,
     RouteClientResponse,
@@ -19,6 +22,14 @@ from app.utils.exceptions.business_exceptions import (
     EntityNotFoundError,
 )
 
+# Campos que un PATCH no puede dejar en null (columnas NOT NULL)
+_REQUIRED_ON_UPDATE = {
+    "name": "El nombre",
+    "days_week": "Los días",
+    "departure_time": "La hora de salida",
+    "active": "El estado",
+}
+
 
 class RouteService(BaseService[Route, RouteCreate, RouteUpdate]):
     unique_rules = (UniqueRule("name", "Nombre de ruta"),)
@@ -26,6 +37,28 @@ class RouteService(BaseService[Route, RouteCreate, RouteUpdate]):
     def __init__(self):
         # Inyectamos el repositorio instanciado y el nombre para el error 404
         super().__init__(repository=route_repository, entity_name="Ruta")
+
+    # PATCH: además de la unicidad del nombre, no se vacían columnas obligatorias
+    def _validate_before_update(
+        self, db: Session, obj_in: RouteUpdate, existing: Route
+    ) -> None:
+        for field, label in _REQUIRED_ON_UPDATE.items():
+            if field in obj_in.model_fields_set and getattr(obj_in, field) is None:
+                raise BusinessValidationError(
+                    f"{label} de la ruta no puede quedar vacío.",
+                    field=field,
+                    code="REQUIRED_FIELD",
+                )
+        super()._validate_before_update(db, obj_in, existing)
+
+    # --- Panel de administración ---
+
+    def get_admin_page(
+        self, db: Session, *, filters: RouteAdminFilters, params: PageParams
+    ) -> Page[RouteAdminRow]:
+        rows, total = route_repository.get_admin_page(db, filters, params)
+        items = [RouteAdminRow.model_validate(r, from_attributes=True) for r in rows]
+        return Page[RouteAdminRow].build(items, total=total, params=params)
 
     # --- Vista de Rutas ---
 

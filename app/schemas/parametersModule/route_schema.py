@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import time
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
@@ -71,6 +72,11 @@ class RouteAvailableClientResponse(BaseModel):
     address: str | None
     neighborhood_name: str
     zone_name: str
+    special_prices_count: int = Field(
+        0,
+        description="Productos activos con precio especial: sin ellos no se le "
+        "pueden generar pedidos desde la ruta",
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -84,5 +90,24 @@ class RouteClientResponse(BaseModel):
     neighborhood_name: str
     zone_name: str
     active: bool = Field(..., description="Estado del cliente")
+    special_prices_count: int = Field(
+        0,
+        description="Productos activos con precio especial: sin ellos no se le "
+        "pueden generar pedidos desde la ruta",
+    )
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# -----------------------------------------------------
+# Panel de administración (/routes/admin)
+# -----------------------------------------------------
+@dataclass(frozen=True)
+class RouteAdminFilters:
+    search: str | None = None  # nombre (contiene)
+    active: bool | None = None  # None = activas e inactivas
+    day: DayWeek | None = None  # rutas que salen ese día de la semana
+
+
+class RouteAdminRow(RouteResponse):
+    clients_count: int = Field(..., description="Clientes activos asignados")

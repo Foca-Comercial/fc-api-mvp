@@ -1090,6 +1090,30 @@ persona.
   tienen las conservan. Reactivarlo las vuelve a ofrecer. No hay borrado físico: las
   asignaciones lo referencian.
 
+**Rutas** (`/routes/admin` y los endpoints de la Vista de Rutas, que ya son solo de
+`ADMINISTRADOR` para escribir):
+
+- **`GET /routes/admin?search=&active=&day=&page=&page_size=`** → `Page[RouteAdminRow]`, por
+  nombre: días, hora de salida, estado y `clients_count` (clientes activos asignados).
+  `day` (1 = lunes … 7 = domingo) filtra las rutas que salen ese día
+  (`día == any_(days_week)`).
+- Crear y editar usan `POST /routes/` y `PATCH /routes/{id}` (nombre único, al menos un
+  día, hora de salida). El `PATCH` rechaza `null` en columnas obligatorias (422
+  `REQUIRED_FIELD`). Un cambio de días u hora aplica de inmediato a «Rutas del día»; los
+  pedidos ya generados no cambian.
+- Desactivar (`PATCH {"active": false}`) saca la ruta de `/orders/routes-of-day`: ya no se
+  generan pedidos desde ella. Sus pedidos conservan `id_route`. No hay borrado físico.
+- `GET /routes/{id}/clients` y `/available-clients` traen `special_prices_count`
+  (productos **activos** con precio especial del cliente): sin ellos el cliente aparece en
+  la plantilla de la ruta pero no se le puede generar pedido.
+
+**Domiciliario de un pedido (blindaje):** al crear un pedido (individual o por ruta) o al
+reasignarlo (`PATCH /orders/{id}` con un `id_user_vehicle` distinto), la asignación, su
+vehículo y su domiciliario (usuario y persona) deben estar activos (422
+`REFERENCE_INACTIVE`, `field: "id_user_vehicle"`; `OrderService._ensure_vehicle` con
+`user_vehicle_repository.get_assignment_status`). Un pedido que ya lo tenía lo conserva:
+reenviar el mismo `id_user_vehicle` no se valida de nuevo, y se despacha y factura igual.
+
 ### Archivado mensual — Google Sheets y purga
 
 Para que la BD no crezca sin límite, se conservan `HISTORY_RETENTION_MONTHS` meses (2: el
@@ -1204,7 +1228,8 @@ Cómo ejecutarlas: ver `README.md`.
   (listado, código único y bloqueado con pedidos, desactivar/reactivar), domiciliarios y
   asignaciones (usuario automático, protecciones, códigos, uso, vendedor por defecto),
   vehículos (conteo de asignaciones, nombre único, desactivar oculta del selector),
-  consecutivo
+  rutas del panel (filtros por estado y día, precios especiales de sus clientes) y el
+  blindaje del domiciliario de un pedido, consecutivo
   diario, filtros por rango de fechas, histórico, archivado (exportación, verificación y
   purga) y cierre (resumen, Excel, reexportación y bloqueo de la purga) — incluye la
   regresión de cada bug corregido.

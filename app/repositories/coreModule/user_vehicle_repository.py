@@ -70,6 +70,25 @@ class RepositoryUserVehicle(
             for row in db.execute(stmt).all()
         }
 
+    # Para asignar pedidos: estado de la asignación, su vehículo y su domiciliario
+    # (usuario y persona). None si la asignación no existe.
+    def get_assignment_status(self, db: Session, id_user_vehicle: int):
+        stmt = (
+            select(
+                UserVehicle.active,
+                Vehicle.active.label("vehicle_active"),
+                Vehicle.name.label("vehicle_name"),
+                (User.active & Person.active).label("driver_active"),
+                (Person.name + " " + Person.last_name).label("driver_name"),
+            )
+            .join(Vehicle, UserVehicle.id_vehicle == Vehicle.id_vehicle)
+            .join(UserRole, UserVehicle.id_user_role == UserRole.id_user_role)
+            .join(User, UserRole.id_user == User.id_user)
+            .join(Person, User.id_person == Person.id_person)
+            .where(UserVehicle.id_user_vehicle == id_user_vehicle)
+        )
+        return db.execute(stmt).one_or_none()
+
     def get_id_by_code(self, db: Session, code: str) -> int | None:
         return db.scalar(
             select(UserVehicle.id_user_vehicle).where(UserVehicle.code == code)
