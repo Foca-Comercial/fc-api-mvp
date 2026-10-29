@@ -79,14 +79,7 @@ class ClientService(BaseService[Client, ClientCreate, ClientUpdate]):
         """PATCH parcial de un cliente registrado. `active=False` lo desactiva
         (deja de aparecer al tomar pedidos, en rutas y en la búsqueda; su
         historial se conserva) y `active=True` lo reactiva."""
-        client = self.get(db, id_client)
-        if not client.is_registered:
-            raise BusinessValidationError(
-                "Este cliente es temporal (se creó desde un pedido) y no se gestiona "
-                "en el panel; se elimina con la purga mensual.",
-                field="id_client",
-                code="CLIENT_NOT_REGISTERED",
-            )
+        client = self.get_registered(db, id_client)
 
         sent = obj_in.model_fields_set
         for field, label in _REQUIRED_ON_UPDATE.items():
@@ -104,6 +97,19 @@ class ClientService(BaseService[Client, ClientCreate, ClientUpdate]):
 
         self.repository.update(db, db_obj=client, obj_in=obj_in)
         return self._admin_row(db, id_client)
+
+    def get_registered(self, db: Session, id_client: int) -> Client:
+        """Cliente gestionable en el panel: 404 si no existe, 422 si es temporal.
+        Lo usan también los precios especiales del cliente."""
+        client = self.get(db, id_client)
+        if not client.is_registered:
+            raise BusinessValidationError(
+                "Este cliente es temporal (se creó desde un pedido) y no se gestiona "
+                "en el panel; se elimina con la purga mensual.",
+                field="id_client",
+                code="CLIENT_NOT_REGISTERED",
+            )
+        return client
 
     # --- Utilidades ---
 

@@ -997,6 +997,25 @@ mensual.
 - Responden con la misma fila del listado (`ClientAdminRow`), así el frontend actualiza la
   tabla sin otra consulta de detalle.
 
+**Precios especiales del cliente** (`/clients/admin/{id}/special-prices`): un precio
+pactado por producto (`uq_special_price_client_product`). Solo clientes registrados (422
+`CLIENT_NOT_REGISTERED` si es temporal).
+
+- **`GET`** → `list[ClientSpecialPriceRow]` por código de producto: producto (código,
+  nombre, si está activo), `base_price` y `agreed_price`. Incluye productos inactivos (que
+  no se ofrecen en los pedidos) para que se vean y se puedan quitar.
+- **`PUT /{id_product}`** `{"agreed_price": ...}` asigna o cambia el precio (idempotente):
+  un *upsert* (`INSERT ... ON CONFLICT DO UPDATE`) en una sola sentencia, así dos
+  administradores a la vez no generan duplicados. Un precio **nuevo** exige producto
+  existente y activo; el de un producto que se desactivó después sí se puede editar.
+- **`DELETE /{id_product}`**: borra el precio (404 si no existía). No hay borrado lógico:
+  la tabla no tiene `active`, y los pedidos ya tomados guardan su propio `unit_price` en el
+  detalle, así que no se pierde historial.
+- Se usan en el catálogo del pedido (`effective_price`) y en la plantilla y creación de
+  pedidos por ruta (solo productos con precio especial). Un cambio de precio aplica a los
+  pedidos que se tomen después; los ya creados no cambian.
+- El CRUD genérico `/specials_customers_prices` sigue siendo solo de `ADMINISTRADOR`.
+
 ### Archivado mensual — Google Sheets y purga
 
 Para que la BD no crezca sin límite, se conservan `HISTORY_RETENTION_MONTHS` meses (2: el
@@ -1106,7 +1125,8 @@ Cómo ejecutarlas: ver `README.md`.
   endpoints retirados (`DELETE /orders`, escritura en `/orders_details`) y
   `BaseRepository.update` sobre objetos expirados, rutas (gestión solo de ADMINISTRADOR,
   lectura del GESTOR) y pedidos por ruta, paginación en el servidor, panel de clientes
-  (listado, filtros, crear, editar, desactivar/reactivar y roles), consecutivo
+  (listado, filtros, crear, editar, desactivar/reactivar y roles) y sus precios especiales
+  (asignar, editar, quitar, productos inactivos, plantilla de ruta), consecutivo
   diario, filtros por rango de fechas, histórico, archivado (exportación, verificación y
   purga) y cierre (resumen, Excel, reexportación y bloqueo de la purga) — incluye la
   regresión de cada bug corregido.
