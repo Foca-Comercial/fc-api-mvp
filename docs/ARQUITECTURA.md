@@ -970,6 +970,33 @@ La consolidación (`ShiftClosureService.consolidate`) es una sola y la usan el r
 exportación: renglones agrupados por (vendedor, producto, precio) en SQL y fusión en Python
 de los pedidos sin conductor con los propios del vendedor por defecto.
 
+### Panel de administración (solo `ADMINISTRADOR`)
+
+Funciones exclusivas del administrador, servidas al módulo `/administracion` del frontend.
+Los listados usan la paginación en el servidor de la sección 3.
+
+**Clientes** (`/clients/admin`): solo clientes **registrados** (`is_registered=True`).
+Los temporales (creados desde `/orders/new-client`) no se gestionan aquí; los borra la purga
+mensual.
+
+- **`GET /clients/admin?search=&active=&id_zone=&page=&page_size=`** → `Page[ClientAdminRow]`,
+  por nombre (A-Z). `search` busca en el nombre (contiene) o el teléfono (empieza por), con
+  los comodines `%` y `_` tratados como texto (`autoescape`). `active` sin valor trae activos
+  e inactivos. Cada fila trae barrio, zona, `special_prices_count` y `routes_count`
+  (subconsultas correlacionadas: solo se calculan para las filas de la página; el conteo del
+  total usa una consulta sin ellas).
+- **`POST /clients/admin`** (`ClientAdminCreate`): crea el cliente con `is_registered=True`
+  (lo fija el servicio; no se expone). Nombre y dirección con `UpperText`, teléfono de 10
+  dígitos (`^\d{10}$`) y barrio existente y activo.
+- **`PATCH /clients/admin/{id}`** (`ClientAdminUpdate`, parcial): editar, **desactivar**
+  (`{"active": false}`) o **reactivar** (`{"active": true}`). Un cliente desactivado deja de
+  aparecer al tomar pedidos (búsqueda), en las rutas y en sus plantillas; su historial de
+  pedidos se conserva. No hay borrado físico: los pedidos lo referencian (`ON DELETE
+  RESTRICT`). Rechaza clientes temporales (422 `CLIENT_NOT_REGISTERED`) y `null` en campos
+  obligatorios (422 `REQUIRED_FIELD`).
+- Responden con la misma fila del listado (`ClientAdminRow`), así el frontend actualiza la
+  tabla sin otra consulta de detalle.
+
 ### Archivado mensual — Google Sheets y purga
 
 Para que la BD no crezca sin límite, se conservan `HISTORY_RETENTION_MONTHS` meses (2: el
@@ -1078,7 +1105,8 @@ Cómo ejecutarlas: ver `README.md`.
   `sync_items`, detalle y PDF sin conductor, dashboards por estado, día y hora de Bogotá,
   endpoints retirados (`DELETE /orders`, escritura en `/orders_details`) y
   `BaseRepository.update` sobre objetos expirados, rutas (gestión solo de ADMINISTRADOR,
-  lectura del GESTOR) y pedidos por ruta, paginación en el servidor, consecutivo
+  lectura del GESTOR) y pedidos por ruta, paginación en el servidor, panel de clientes
+  (listado, filtros, crear, editar, desactivar/reactivar y roles), consecutivo
   diario, filtros por rango de fechas, histórico, archivado (exportación, verificación y
   purga) y cierre (resumen, Excel, reexportación y bloqueo de la purga) — incluye la
   regresión de cada bug corregido.
