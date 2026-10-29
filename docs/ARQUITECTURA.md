@@ -1016,6 +1016,25 @@ pactado por producto (`uq_special_price_client_product`). Solo clientes registra
   pedidos que se tomen después; los ya creados no cambian.
 - El CRUD genérico `/specials_customers_prices` sigue siendo solo de `ADMINISTRADOR`.
 
+**Productos** (`/products/admin`):
+
+- **`GET /products/admin?search=&active=&page=&page_size=`** → `Page[ProductAdminRow]`, por
+  código. `search` busca el inicio del código o una parte del nombre. Cada fila trae
+  `special_prices_count` (clientes con precio pactado) e `in_use` (tiene pedidos; un
+  `EXISTS` sobre `idx_order_detail_product`), ambos solo para las filas de la página.
+- **`POST /products/admin`** (`ProductCreate`): código de 3 dígitos único, nombre y
+  descripción con `UpperText`, precio base ≥ 0 con 2 decimales.
+- **`PATCH /products/admin/{id}`** (`ProductUpdate`, parcial): editar, desactivar o
+  reactivar. Un producto desactivado deja de ofrecerse en el catálogo del pedido y en las
+  rutas; los pedidos ya tomados lo conservan. Un cambio de precio base aplica a los pedidos
+  que se tomen después (cada renglón guarda su `unit_price`).
+- **El código no cambia si el producto ya tiene pedidos** (422 `PRODUCT_CODE_IN_USE`): el
+  cierre, la exportación a Siigo, el histórico y el archivado leen el código **actual** del
+  producto, así que cambiarlo reescribiría cómo se ven los pedidos ya tomados. Reenviar el
+  mismo código sí se permite. Si hace falta otro código, se crea un producto nuevo y se
+  desactiva el anterior.
+- No hay borrado físico: los renglones de pedido lo referencian.
+
 ### Archivado mensual — Google Sheets y purga
 
 Para que la BD no crezca sin límite, se conservan `HISTORY_RETENTION_MONTHS` meses (2: el
@@ -1126,7 +1145,8 @@ Cómo ejecutarlas: ver `README.md`.
   `BaseRepository.update` sobre objetos expirados, rutas (gestión solo de ADMINISTRADOR,
   lectura del GESTOR) y pedidos por ruta, paginación en el servidor, panel de clientes
   (listado, filtros, crear, editar, desactivar/reactivar y roles) y sus precios especiales
-  (asignar, editar, quitar, productos inactivos, plantilla de ruta), consecutivo
+  (asignar, editar, quitar, productos inactivos, plantilla de ruta), panel de productos
+  (listado, código único y bloqueado con pedidos, desactivar/reactivar), consecutivo
   diario, filtros por rango de fechas, histórico, archivado (exportación, verificación y
   purga) y cierre (resumen, Excel, reexportación y bloqueo de la purga) — incluye la
   regresión de cada bug corregido.
