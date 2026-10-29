@@ -8,6 +8,7 @@ from app.core.timezone import today_bogota
 from app.models.coreModule.archive_spreadsheet import ArchiveSpreadsheet
 from app.models.coreModule.monthly_archive import MonthlyArchive
 from app.repositories.coreModule.archive_repository import (
+    archive_overview_repository,
     archive_spreadsheet_repository,
     lock_archive,
     monthly_archive_repository,
@@ -18,6 +19,8 @@ from app.repositories.coreModule.shift_closure_repository import (
     shift_closure_repository,
 )
 from app.schemas.coreModule.archive_schema import (
+    ArchiveMonthRow,
+    ArchiveOverview,
     ArchiveSpreadsheetResponse,
     MonthlyArchiveResponse,
     PurgeResponse,
@@ -239,6 +242,68 @@ class ArchiveService:
         db.commit()
         db.refresh(row)
         return self._spreadsheet_response(row)
+
+    # --- Resumen para la vista Archivo mensual ---
+
+    def get_overview(self, db: Session) -> ArchiveOverview:
+        """Meses hasta el vigente: los que tienen pedidos en la BD y los ya
+        archivados (los purgados ya no tienen pedidos). Por cada uno, si se puede
+        exportar o purgar y, fuera de la retención, los días sin cierre exportado
+        (que impiden purgar)."""
+        current = today_bogota().replace(day=1)
+        retained_from = first_retained_month()
+        in_db = {
+            row.month: row
+            for row in archive_overview_repository.get_order_months(
+                db, before=add_months(current, 1)
+            )
+        }
+        archived = {
+            row.archive_month: row for row in monthly_archive_repository.get_all(db)
+        }
+        sheets = {
+            row.year: row.spreadsheet_id
+            for row in archive_spreadsheet_repository.get_all(db)
+        }
+
+        months: list[ArchiveMonthRow] = []
+        for month in sorted(set(in_db) | set(archived), reverse=True):
+            if month > current:
+                continue
+            orders = in_db.get(month)
+            archive = archived.get(month)
+            orders_count = orders.orders_count if orders else 0
+            sheet_id = sheets.get(month.year)
+            retained = month >= retained_from
+            purged = archive is not None and archive.status == ArchiveStatus.PURGED
+            unclosed = (
+                []
+                if retained or purged or orders_count == 0
+                else shift_closure_repository.get_unclosed_days(db, month)
+            )
+            exportable = orders_count > 0 and not purged and sheet_id is not None
+            months.append(
+                ArchiveMonthRow(
+                    month=month_label(month),
+                    orders_count=orders_count,
+                    total_sales=orders.total_sales if orders else 0,  # type: ignore
+                    status=archive.status if archive else None,
+                    exported_at=archive.exported_at if archive else None,
+                    purged_at=archive.purged_at if archive else None,
+                    exported_orders=archive.orders_count if archive else None,
+                    spreadsheet_url=spreadsheet_url(sheet_id) if sheet_id else None,
+                    retained=retained,
+                    unclosed_days=unclosed,
+                    can_export=exportable,
+                    can_purge=exportable and not retained and not unclosed,
+                )
+            )
+        return ArchiveOverview(
+            current_month=month_label(current),
+            first_retained_month=month_label(retained_from),
+            retention_months=settings.HISTORY_RETENTION_MONTHS,
+            months=months,
+        )
 
     # --- Bitácora ---
 

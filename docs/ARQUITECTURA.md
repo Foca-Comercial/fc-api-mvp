@@ -809,7 +809,14 @@ class OrderItemSync(BaseModel):
 ```
 Cualquier `OrderDetail` existente que **no** aparezca en la lista enviada se elimina. Mismo
 patrón de atomicidad (`flush`/`commit` único) que la creación. Solo permitido mientras
-`order.state == PENDING`. La lista final tampoco puede repetir productos (misma validación
+`order.state == PENDING`.
+
+**Productos desactivados después de tomar el pedido:** un renglón que el pedido ya tenía
+(`id_order_detail` existente y mismo `id_product`) conserva su producto aunque esté
+inactivo: se le puede cambiar cantidad o precio, o quitarlo, sin bloquear el resto de la
+edición. Solo un producto **nuevo** en el pedido, o un renglón que cambia de producto,
+exige producto activo (422 `REFERENCE_INACTIVE`). `GET /orders/{id}/details` trae
+`product_active` por renglón para que el editor lo marque. La lista final tampoco puede repetir productos (misma validación
 que la creación, aplicada antes de modificar nada). Se valida en el service y no con un
 `UniqueConstraint(id_order, id_product)` en BD, porque la sincronización borra y reescribe
 renglones dentro de la misma transacción.
@@ -1138,6 +1145,16 @@ Todo es manual y solo de `ADMINISTRADOR` (`/archive`):
   `MONTH_NOT_CLOSED` (lista los días), porque sin los pedidos ya no se podría generar su
   cierre. Los `shift_closure` no se borran: quedan como registro de lo enviado a Siigo.
 - **`GET /archive/`**: bitácora de meses exportados y purgados.
+- **`GET /archive/months`** (vista Archivo mensual del panel): `current_month`,
+  `first_retained_month`, `retention_months` y una fila por mes hasta el vigente (del más
+  reciente al más antiguo): los que tienen pedidos en la BD (por `delivery_date`, agrupados
+  en SQL) y los ya archivados (los purgados quedan con `orders_count = 0`). Cada fila trae
+  pedidos y ventas en la BD (sin cancelados), estado y fechas del archivado, la URL del
+  spreadsheet del año (null si no está registrado), `retained`, `unclosed_days` (solo fuera
+  de la retención: días facturables sin cierre exportado o con cambios posteriores) y los
+  permisos ya resueltos: `can_export` (tiene pedidos, no está purgado y hay spreadsheet) y
+  `can_purge` (además, fuera de la retención y sin días sin cierre). Las mismas reglas las
+  vuelven a validar `export` y `purge`.
 
 Exportación y purga se serializan con un `pg_advisory_xact_lock`: una a la vez. El servicio
 depende del protocolo `SheetsWriter`, inyectado con `Depends(get_sheets_writer)`; en los
@@ -1228,8 +1245,9 @@ Cómo ejecutarlas: ver `README.md`.
   (listado, código único y bloqueado con pedidos, desactivar/reactivar), domiciliarios y
   asignaciones (usuario automático, protecciones, códigos, uso, vendedor por defecto),
   vehículos (conteo de asignaciones, nombre único, desactivar oculta del selector),
-  rutas del panel (filtros por estado y día, precios especiales de sus clientes) y el
-  blindaje del domiciliario de un pedido, consecutivo
+  rutas del panel (filtros por estado y día, precios especiales de sus clientes), el
+  blindaje del domiciliario de un pedido, productos desactivados en pedidos pendientes y
+  el resumen de meses del archivado, consecutivo
   diario, filtros por rango de fechas, histórico, archivado (exportación, verificación y
   purga) y cierre (resumen, Excel, reexportación y bloqueo de la purga) — incluye la
   regresión de cada bug corregido.

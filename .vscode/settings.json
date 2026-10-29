@@ -1,0 +1,18 @@
+{
+  // Oculta archivos o carpetas del explorador de archivos de VSCode, sin borrarlos del proyecto.
+  "files.exclude": {
+    // Configuración para Python
+    "alembic.ini": true,
+    "pytest.ini": true,
+    "requirements.txt": true,
+    "requirements-dev.txt": true,
+  },
+  // Evita que ciertas carpetas o archivos aparezcan cuando haces una búsqueda global en VSCode (Ctrl+Shift+F).
+  "search.exclude": {
+    "**/node_modules": true, // Evita que el buscador busque dentro de node_modules
+    "**/dist": true, // No busca en la carpeta de build
+    "**/build": true, // Igual, por si se llama "build"
+    "**/*.min.*": true, // No busca en archivos minificados
+    "**/*.map": true // No busca en archivos .map
+  }
+}

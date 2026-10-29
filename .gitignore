@@ -14,7 +14,13 @@ app/.env
 app/.env.*
 
 # IDEs / Editores
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/mcp.json
+.history/*
 .idea/
 *.swp
 

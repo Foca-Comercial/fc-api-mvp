@@ -139,6 +139,11 @@ class OrderDetailItemModal(BaseModel):
     id_product: int
     product_code: str
     product_name: str
+    product_active: bool = Field(
+        True,
+        description="Un producto desactivado después de tomar el pedido se conserva "
+        "en su renglón, pero no se puede volver a agregar",
+    )
     cant: int
     unit_price: Decimal
     subtotal: Decimal

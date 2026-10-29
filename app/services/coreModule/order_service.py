@@ -167,6 +167,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 id_product=detail.id_product,
                 product_code=detail.product.code,
                 product_name=detail.product.name,
+                product_active=detail.product.active,
                 cant=detail.cant,
                 unit_price=detail.unit_price,
                 subtotal=detail.subtotal,
@@ -680,13 +681,22 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
 
         total = Decimal("0")  # noqa: FURB157
         for item in items:
-            self._ensure_reference(
-                db,
-                product_repository,
-                item.id_product,
-                field="id_product",
-                label="Producto",
+            # Un renglón que el pedido ya tenía conserva su producto aunque este se
+            # haya desactivado después (se le puede cambiar cantidad o precio, o
+            # quitarlo). Un producto nuevo en el pedido, o un renglón que cambia de
+            # producto, sí debe existir y estar activo.
+            kept = (
+                item.id_order_detail is not None
+                and existing_details[item.id_order_detail].id_product == item.id_product
             )
+            if not kept:
+                self._ensure_reference(
+                    db,
+                    product_repository,
+                    item.id_product,
+                    field="id_product",
+                    label="Producto",
+                )
             subtotal = item.unit_price * item.cant
 
             if item.id_order_detail is not None:
