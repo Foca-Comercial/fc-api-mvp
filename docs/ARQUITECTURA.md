@@ -1078,6 +1078,18 @@ persona.
   `ensure_reference` la rechazan al asignar o reasignar pedidos (422 `REFERENCE_INACTIVE`).
   Un pedido que ya la tenía la conserva: se despacha y se factura igual.
 
+**Vehículos** (`/vehicles/admin`):
+
+- **`GET /vehicles/admin?search=&active=&page=&page_size=`** → `Page[VehicleAdminRow]`, por
+  nombre, con `assignments_count` (asignaciones activas con ese vehículo).
+- **`POST /vehicles/admin`** y **`PATCH /vehicles/admin/{id}`**: nombre único (ignora
+  mayúsculas y espacios) y estado. El nombre se puede cambiar siempre: el cierre y Siigo
+  usan el código de la asignación, no el vehículo.
+- **Desactivar un vehículo** oculta todas sus asignaciones del selector de domiciliarios del
+  pedido (`/users_vehicles/dropdown` filtra `Vehicle.active`); los pedidos que ya las
+  tienen las conservan. Reactivarlo las vuelve a ofrecer. No hay borrado físico: las
+  asignaciones lo referencian.
+
 ### Archivado mensual — Google Sheets y purga
 
 Para que la BD no crezca sin límite, se conservan `HISTORY_RETENTION_MONTHS` meses (2: el
@@ -1191,6 +1203,7 @@ Cómo ejecutarlas: ver `README.md`.
   (asignar, editar, quitar, productos inactivos, plantilla de ruta), panel de productos
   (listado, código único y bloqueado con pedidos, desactivar/reactivar), domiciliarios y
   asignaciones (usuario automático, protecciones, códigos, uso, vendedor por defecto),
+  vehículos (conteo de asignaciones, nombre único, desactivar oculta del selector),
   consecutivo
   diario, filtros por rango de fechas, histórico, archivado (exportación, verificación y
   purga) y cierre (resumen, Excel, reexportación y bloqueo de la purga) — incluye la
