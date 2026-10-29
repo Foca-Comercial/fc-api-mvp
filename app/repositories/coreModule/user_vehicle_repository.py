@@ -37,6 +37,7 @@ class RepositoryUserVehicle(
 
         if only_active:
             stmt = stmt.where(
+                UserVehicle.active.is_(True),
                 User.active.is_(True),
                 Person.active.is_(True),
                 Vehicle.active.is_(True),

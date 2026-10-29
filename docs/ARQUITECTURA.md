@@ -1035,6 +1035,49 @@ pactado por producto (`uq_special_price_client_product`). Solo clientes registra
   desactiva el anterior.
 - No hay borrado físico: los renglones de pedido lo referencian.
 
+**Domiciliarios y asignaciones** (`/drivers/admin`, router `driver_router.py`,
+servicio `driver_service.py`, consultas en `driver_repository.py`):
+
+Un domiciliario no es una tabla: es **Person + User + UserRole (rol `VENDEDOR`)**. Cada
+**asignación** (`user_vehicle`) es la pareja domiciliario + vehículo con su propio código
+de 2 dígitos, que es el **código de vendedor en Siigo**: un domiciliario tiene un código
+por cada vehículo que maneja, y un vehículo lo comparten varios domiciliarios. El cierre,
+el selector de domiciliarios del pedido y Siigo trabajan con la asignación, no con la
+persona.
+
+- **`GET /drivers/admin?search=&active=&page=&page_size=`** → `Page[DriverAdminRow]`, por
+  nombre. `search` busca en nombre + apellido (contiene) o en el inicio de cualquiera de sus
+  códigos. Cada fila trae `codes` (de sus asignaciones activas), `assignments_count` y
+  `protected` (ver abajo).
+- **`POST /drivers/admin`** (`DriverCreate`: nombre, apellido, teléfono de 10 dígitos y
+  correo opcionales): crea persona, usuario y rol `VENDEDOR` en una sola transacción. El
+  usuario es `nombre.apellido` (primera palabra de cada uno, sin tildes; `2`, `3`… si ya
+  existe) y la contraseña inicial es la de la data inicial (`INITIAL_PASSWORD`): hoy el
+  VENDEDOR no inicia sesión; se cambiará al construir su app. 422 `SELLER_ROLE_MISSING` si
+  no existe el rol.
+- **`PATCH /drivers/admin/{id_user}`**: datos de la persona y `active` (desactiva o reactiva
+  usuario y persona). Sus asignaciones dejan de ofrecerse; sus pedidos y cierres se
+  conservan. **Protegido** (422): un usuario con otro rol, p. ej. ADMINISTRADOR
+  (`DRIVER_PROTECTED`: desactivarlo le quitaría el acceso), o dueño del vendedor por defecto
+  (`DEFAULT_SELLER_PROTECTED`). El usuario no cambia al editar el nombre.
+- **Asignaciones** — `GET/POST /drivers/admin/{id_user}/assignments` y
+  `PATCH/DELETE .../assignments/{id_user_vehicle}`:
+  - Código de 2 dígitos único (409 `SELLER_CODE_TAKEN`), vehículo existente y activo, y una
+    sola asignación por pareja domiciliario-vehículo (409 `DUPLICATE_ASSIGNMENT`: si está
+    inactiva, se reactiva).
+  - **Con pedidos o cierres (`in_use`) solo cambia `active`** (422 `ASSIGNMENT_IN_USE`): el
+    cierre y Siigo usan el código actual, así que cambiar el código o el vehículo
+    reescribiría lo ya facturado. Se desactiva y se crea otra.
+  - `DELETE` solo de una asignación que nunca se usó (p. ej. creada por error).
+  - La del **vendedor por defecto** (`DEFAULT_SELLER_CODE`) no se desactiva, cambia ni borra
+    (`DEFAULT_SELLER_PROTECTED`): el cierre le suma los pedidos sin conductor.
+  - **`GET /drivers/admin/next-code`**: primer código libre de 01 a 99 (sugerencia). Con 2
+    dígitos hay como máximo 99 asignaciones, contando las inactivas.
+- **`user_vehicle.active`** (migración `b7e2f4a9c1d3`; las existentes quedan activas): una
+  asignación inactiva no aparece en `/users_vehicles/dropdown` y `ReferenceRule` /
+  `ensure_reference` la rechazan al asignar o reasignar pedidos (422 `REFERENCE_INACTIVE`).
+  Un pedido que ya la tenía la conserva: se despacha y se factura igual.
+
 ### Archivado mensual — Google Sheets y purga
 
 Para que la BD no crezca sin límite, se conservan `HISTORY_RETENTION_MONTHS` meses (2: el
@@ -1146,7 +1189,9 @@ Cómo ejecutarlas: ver `README.md`.
   lectura del GESTOR) y pedidos por ruta, paginación en el servidor, panel de clientes
   (listado, filtros, crear, editar, desactivar/reactivar y roles) y sus precios especiales
   (asignar, editar, quitar, productos inactivos, plantilla de ruta), panel de productos
-  (listado, código único y bloqueado con pedidos, desactivar/reactivar), consecutivo
+  (listado, código único y bloqueado con pedidos, desactivar/reactivar), domiciliarios y
+  asignaciones (usuario automático, protecciones, códigos, uso, vendedor por defecto),
+  consecutivo
   diario, filtros por rango de fechas, histórico, archivado (exportación, verificación y
   purga) y cierre (resumen, Excel, reexportación y bloqueo de la purga) — incluye la
   regresión de cada bug corregido.
