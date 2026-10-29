@@ -66,12 +66,14 @@ app/
 │   └── parametersModule/         # Zone, Neighborhood, Route, Vehicle
 ├── schemas/                      # DTOs Pydantic, mismo agrupamiento que models/
 │   ├── auth/                     # Token, RefreshRequest, SessionCreate/Update
+│   ├── common/                   # Page[T] y PageParams (listados paginados)
 │   ├── securityModule/
 │   ├── coreModule/
 │   └── parametersModule/
 ├── repositories/                  # Acceso a datos (capa Data)
 │   ├── base_repository.py        # CRUD genérico + helpers reutilizables
 │   ├── time_filters.py           # on_bogota_day / between_bogota_dates / on_db_today
+│   ├── pagination.py             # paginate / count_rows (OFFSET/LIMIT + total en SQL)
 │   └── <mismos módulos que models/>
 ├── services/                      # Lógica de negocio (capa Business)
 │   ├── base_service.py           # CRUD genérico + hooks de validación declarativa
@@ -200,6 +202,50 @@ los que se listan en el flujo operativo (formulario de pedido). Las cards de la 
 Rutas usan su propia consulta (`/routes/cards`), que sí incluye las inactivas. El resto de entidades devuelve
 también los inactivos **a propósito** — sus listados son de administración, donde ver lo
 desactivado es útil.
+
+### Listados paginados en el servidor (vistas de administración)
+
+Los listados de administración (clientes, productos, domiciliarios, etc.) crecen sin
+límite, así que se paginan, filtran y ordenan **en PostgreSQL**, no en el frontend ni con
+el `GET /` genérico (`skip`/`limit`, sin total y con tope de 100). Todos responden el
+mismo contrato:
+
+```json
+{"page": 1, "page_size": 25, "total": 134, "pages": 6, "items": [...]}
+```
+
+Piezas (una por capa):
+
+| Capa | Pieza | Qué hace |
+|---|---|---|
+| Router | `params: PageParams = Depends(get_page_params)` (`api/dependencies.py`) | Valida `page` (≥ 1) y `page_size` (1–200, por defecto 25) |
+| Repository | `paginate(db, stmt, params, scalars=..., count_stmt=...)` (`repositories/pagination.py`) | Cuenta el total del filtro y trae solo la página (`OFFSET`/`LIMIT`) |
+| Service | `Page[Row].build(items, total=..., params=...)` (`schemas/common/page_schema.py`) | Arma la respuesta y calcula `pages` |
+
+```python
+# repositorio
+def get_admin_page(self, db, filters, params):
+    stmt = select(...).where(...).order_by(Client.name, Client.id_client)
+    return paginate(db, stmt, params)
+
+# servicio
+rows, total = client_repository.get_admin_page(db, filters, params)
+items = [ClientAdminRow.model_validate(r, from_attributes=True) for r in rows]
+return Page[ClientAdminRow].build(items, total=total, params=params)
+
+# router
+@router.get("/admin", response_model=Page[ClientAdminRow])
+def list_clients_admin(params: PageParams = Depends(get_page_params), ...): ...
+```
+
+- El `ORDER BY` termina siempre en una columna única (la PK): con empates, PostgreSQL
+  puede repetir u omitir filas entre páginas.
+- `paginate` no hace la segunda consulta si no hay registros o la página pedida está más
+  allá del final (responde `items: []` con el `total` real, y el frontend vuelve a la
+  última página).
+- `count_stmt` permite contar sin los joins que solo aportan columnas de visualización.
+- El histórico (`OrderHistoryPage`) es anterior y conserva su propio formato (agrega
+  `date_from`, `date_to` y `total_sales`).
 
 ### Validaciones declarativas (`services/validation.py`)
 
@@ -814,8 +860,10 @@ datos de un cliente existente en el flujo de registro de pedido. Solo devuelve c
 
 ### Vista de Rutas
 
-Roles: `GESTOR_COMERCIAL` (y `ADMINISTRADOR`). Desactivar/eliminar una ruta
-(`DELETE /routes/{id}`) sigue siendo solo de `ADMINISTRADOR`.
+Roles: el `GESTOR_COMERCIAL` solo **lee** lo que usa su vista de Rutas
+(`GET /routes/`, `/routes/cards`, `/routes/{id}` y `/routes/{id}/clients`). Crear,
+editar y desactivar rutas, el selector de clientes disponibles y asignar o quitar
+clientes son solo de `ADMINISTRADOR` (panel de administración).
 
 - **`GET /routes/cards?only_active=false`**: una card por ruta con nombre, `days_week`,
   hora de salida, estado y `clients_count` (clientes **activos** asignados), más
@@ -1029,7 +1077,8 @@ Cómo ejecutarlas: ver `README.md`.
   repetidos o inexistentes), máquina de estados (dispatch/deliver), `PATCH` de conductor,
   `sync_items`, detalle y PDF sin conductor, dashboards por estado, día y hora de Bogotá,
   endpoints retirados (`DELETE /orders`, escritura en `/orders_details`) y
-  `BaseRepository.update` sobre objetos expirados, rutas y pedidos por ruta, consecutivo
+  `BaseRepository.update` sobre objetos expirados, rutas (gestión solo de ADMINISTRADOR,
+  lectura del GESTOR) y pedidos por ruta, paginación en el servidor, consecutivo
   diario, filtros por rango de fechas, histórico, archivado (exportación, verificación y
   purga) y cierre (resumen, Excel, reexportación y bloqueo de la purga) — incluye la
   regresión de cada bug corregido.
@@ -1101,3 +1150,6 @@ Cómo ejecutarlas: ver `README.md`.
     para reemplazarlos en los tests; sus fallas se traducen a `ExternalServiceError` (502).
 16. Operaciones que no deben correr dos a la vez sobre el mismo recurso global (archivado)
     → `pg_advisory_xact_lock`; sobre una fila → `get_for_update()`.
+17. Listados que crecen sin límite (administración) → paginados en el servidor con
+    `get_page_params` + `paginate` + `Page[Row]` (sección 3), con filtros y orden en SQL y
+    el `ORDER BY` terminado en la PK. Nunca traer la tabla completa al frontend.
