@@ -67,7 +67,7 @@ def first_retained_month() -> date:
 class ArchiveService:
     """Archivado mensual de pedidos: configuración, bitácora y exportación.
 
-    La purga (borrado de la BD) se agrega en H5.
+    La purga (borrado de la BD) reutiliza la misma exportación y verificación.
     """
 
     # --- Exportación ---
@@ -170,7 +170,7 @@ class ArchiveService:
     def _export_with_ids(
         self, db: Session, *, archive_month: date, writer: SheetsWriter
     ):
-        """Exporta y verifica, sin commit. Reutilizable por la purga (H5)."""
+        """Exporta y verifica, sin commit. Lo reutiliza la purga."""
         existing = monthly_archive_repository.get(db, archive_month)
         if existing is not None and existing.status == ArchiveStatus.PURGED:
             raise ConflictError(

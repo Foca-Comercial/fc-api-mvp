@@ -20,6 +20,13 @@ GOOGLE_CREDENTIALS_FILE=credentials/google-service-account.json
 HISTORY_RETENTION_MONTHS=2
 # Vendedor (user_vehicle.code) que recibe en el cierre los pedidos sin conductor
 DEFAULT_SELLER_CODE=01
+# Cookie del refresh token. En producción con HTTPS: COOKIE_SECURE=true; si el front
+# y la API quedan en dominios distintos: COOKIE_SAMESITE=none (exige Secure)
+COOKIE_SECURE=false
+COOKIE_SAMESITE=lax
+# COOKIE_DOMAIN=
+# CORS: solo si el front vive en otro origen (lista JSON). Vacío en desarrollo (proxy)
+# CORS_ORIGINS=["https://app.ejemplo.com"]
 ```
 
 ### Google Sheets (archivado mensual)
@@ -29,14 +36,16 @@ DEFAULT_SELLER_CODE=01
    `GOOGLE_CREDENTIALS_FILE` a esa ruta.
 2. Crea un spreadsheet por año y **compártelo como editor** con el `client_email` de la
    cuenta de servicio.
-3. Regístralo en la API: `PUT /api/v1/archive/spreadsheets/{año}` con su ID o URL.
+3. Regístralo en el panel de administración (Gestión → Archivo mensual) o en la API:
+   `PUT /api/v1/archive/spreadsheets/{año}` con su ID o URL.
 
 ### Vendedor por defecto (cierre)
 
-Los seeds lo crean en una BD nueva. En una BD que ya tenía datos, créalo una vez: rol
-`VENDEDOR` para el usuario (`POST /user_roles`) y su `user_vehicle` con código `01`
-(`POST /user_vehicles`). Sin él, el cierre de un día con pedidos sin conductor responde
-422 `DEFAULT_SELLER_MISSING`.
+Los seeds lo crean en una BD nueva. En una BD que ya tenía datos, créalo una vez desde el
+panel de administración (Gestión → Domiciliarios: un domiciliario con una asignación de
+código `01`) o con la API (`POST /users_roles` con el rol `VENDEDOR` y
+`POST /users_vehicles` con código `01`). Sin él, el cierre de un día con pedidos sin
+conductor responde 422 `DEFAULT_SELLER_MISSING`.
 
 ## Comandos de Inicialización
 
@@ -98,20 +107,13 @@ Revertir todas las migraciones (elimina las tablas y sus datos)
 alembic downgrade base
 ```
 
-## Pendientes SPFF
+## Autenticación (refresh token en cookie)
 
-- [x] Refresh token en cookie - Al implementar el front:
-
-Son ajustes concretos, pero no hace falta implementarlos hoy (depende de decisiones que solo se pueden tomar cuando exista el frontend real: dominio, si está en el mismo origen o no, HTTPS, etc.). Lista de cambios:
-
-- **Dejar de devolver `refresh_token` en el body del JSON.** `Token` (schema) quedaría solo con `access_token` + `token_type`.
-- **Enviar el refresh token como cookie `httpOnly` + `Secure`**, usando `Response.set_cookie(...)` en los endpoints `login` y `refresh`. `httpOnly` evita que JavaScript pueda leerlo (mitiga robo por XSS); `Secure` exige HTTPS.
-- **`/auth/refresh` debe leer el token desde la cookie**, no desde el body — cambia de recibir `RefreshRequest` a leer `request.cookies.get("refresh_token")`.
-- **`/auth/logout` debe limpiar la cookie** (`Response.delete_cookie(...)`) además de revocar la sesión en BD.
-- **Configurar CORS con `allow_credentials=True`** y **orígenes explícitos** (no `allow_origins=["*"]` — los navegadores rechazan cookies con wildcard cuando `credentials` está activo).
-- **Decidir `SameSite`**: si el frontend vive en un dominio/puerto distinto al backend (típico en desarrollo, ej. `localhost:3000` → `localhost:8000`), se necesita `SameSite=None` + `Secure=True` (que a su vez exige HTTPS incluso en dev, usualmente vía proxy). Si terminan en el mismo dominio, `SameSite=Lax` basta y es más simple.
-- **Limitar el `path` de la cookie** a `/api/v1/auth/refresh` (opcional pero recomendado) — así el navegador solo la envía a ese endpoint específico, no a cada petición de la API.
-
-Ninguno de estos cambios afecta el resto de la arquitectura ya construida — solo toca `auth_router.py`, `auth_schema.py` y la configuración de CORS en `main.py`.
+El refresh token viaja en una cookie `httpOnly` (ruta `/api/v1/auth`) que ponen `login` y
+`refresh` y borra `logout`; el body solo trae el access token. En desarrollo el frontend
+usa el proxy de `ng serve` (mismo origen), así que no hace falta CORS ni HTTPS. En
+producción con dominios distintos: `CORS_ORIGINS` con el origen del frontend,
+`COOKIE_SECURE=true` y `COOKIE_SAMESITE=none`. Detalle en `docs/ARQUITECTURA.md`
+(sección 8).
 
 > Vinculacion de commits con Discord

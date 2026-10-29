@@ -65,7 +65,7 @@ app/
 │   │                              # DailyOrderCounter, MonthlyArchive, ArchiveSpreadsheet
 │   └── parametersModule/         # Zone, Neighborhood, Route, Vehicle
 ├── schemas/                      # DTOs Pydantic, mismo agrupamiento que models/
-│   ├── auth/                     # Token, RefreshRequest, SessionCreate/Update
+│   ├── auth/                     # Token, TokenPair, SessionCreate/Update
 │   ├── common/                   # Page[T] y PageParams (listados paginados)
 │   ├── securityModule/
 │   ├── coreModule/
@@ -131,6 +131,10 @@ suyo con estas variables:
 | `GOOGLE_CREDENTIALS_FILE` | Solo para exportar a Sheets | — (ruta al JSON de la cuenta de servicio de Google) |
 | `HISTORY_RETENTION_MONTHS` | No | `2` (meses que se conservan en la BD, incluido el vigente) |
 | `DEFAULT_SELLER_CODE` | No | `01` (`user_vehicle.code` que recibe en el cierre los pedidos sin conductor) |
+| `COOKIE_SECURE` | No | `false` (`true` en producción con HTTPS) |
+| `COOKIE_SAMESITE` | No | `lax` (`none` si front y API quedan en dominios distintos; exige `Secure`) |
+| `COOKIE_DOMAIN` | No | — (dominio de la cookie del refresh token) |
+| `CORS_ORIGINS` | No | `[]` (sin CORS: el front usa el proxy de desarrollo o el mismo origen) |
 
 ---
 
@@ -196,12 +200,12 @@ servicio sigue heredando `BaseService` para conservar `get`/`get_all`/`update`, 
 métodos propios en vez de forzar la operación dentro de `create()`/`update()` genéricos
 (ver sección 10).
 
-**`get_all` y registros inactivos (decisión explícita):** solo `Client`, `Product` y
-`Route` sobrescriben `get_all` para excluir los registros con `active = False`, porque son
-los que se listan en el flujo operativo (formulario de pedido). Las cards de la vista de
-Rutas usan su propia consulta (`/routes/cards`), que sí incluye las inactivas. El resto de entidades devuelve
-también los inactivos **a propósito** — sus listados son de administración, donde ver lo
-desactivado es útil.
+**`get_all` y registros inactivos (decisión explícita):** los repositorios de entidades con
+`active` (clientes, productos, rutas, barrios, zonas, vehículos, personas, usuarios y roles)
+sobrescriben `get_all` para devolver solo los activos: son los que se ofrecen en los
+flujos operativos y en los selectores. Ver también los inactivos es tarea de los listados
+del panel de administración (`/xxx/admin`, paginados y con filtro de estado) y de las cards
+de la vista de Rutas (`/routes/cards`), que tienen sus propias consultas.
 
 ### Listados paginados en el servidor (vistas de administración)
 
@@ -550,7 +554,8 @@ siendo la garantía final.
 - **Todo o nada:** un único `commit()` al final; cualquier error hace `rollback()`.
 - **Vendedor por defecto:** los seeds asignan a "HIELO FOCA" (usuario `admin`) el rol
   `VENDEDOR` y un `user_vehicle` con código `01` (ver Vista Cierre). En una BD que ya tenía
-  datos hay que crearlo a mano (`POST /user_roles` + `POST /user_vehicles`).
+  datos se crea desde el panel (Domiciliarios) o con `POST /users_roles` +
+  `POST /users_vehicles`.
 
 ---
 
@@ -598,7 +603,15 @@ alembic upgrade head
 | Token | Vida | Dónde vive | Propósito |
 |---|---|---|---|
 | **Access token** | Corta (60 min, configurable) | En memoria del frontend | Autoriza cada petición. Stateless — nunca se guarda en BD. |
-| **Refresh token** | Larga (30 días, configurable) | Body de respuesta (cookie en `httpOnly`) | Renueva el access token sin re-login. **Con estado**, registrado en `user_session`. |
+| **Refresh token** | Larga (30 días, configurable) | Cookie `httpOnly` (ruta `/api/v1/auth`); nunca en el body | Renueva el access token sin re-login. **Con estado**, registrado en `user_session`. |
+
+**Cookie del refresh token (`auth_router.py`):** `login` y `refresh` la ponen
+(`httponly`, `secure`/`samesite`/`domain` según `COOKIE_*`, `path=/api/v1/auth`: el
+navegador solo la envía a los endpoints de auth); `refresh` y `logout` la leen; `logout` y
+`logout-all` la borran con los mismos `path`/`domain`. El body (`Token`) solo trae el
+access token (`TokenPair` es interno del servicio). CORS solo se activa con `CORS_ORIGINS`:
+orígenes explícitos, `allow_credentials=True` y `expose_headers=["Content-Disposition"]`
+para que el front lea el nombre de los archivos descargados.
 
 **Por qué el refresh token necesita tabla propia:** un JWT es stateless por diseño — el
 servidor nunca lo "recuerda", solo valida su firma y `exp`. Esto es ideal para el access
@@ -936,8 +949,9 @@ reciente al más antiguo.
 
 ### Vista Cierre — factura global por vendedor y exportación a Siigo
 
-El cierre del día consolida los pedidos **despachados y entregados** de un día (el de su
-creación, en Bogotá) en una factura global por vendedor (`user_vehicle`). Reglas:
+El cierre del día consolida los pedidos **despachados y entregados** de un día (su
+`delivery_date`, el día de entrega) en una factura global por vendedor (`user_vehicle`).
+Reglas:
 
 - `PENDING` y `CANCELLED` no se facturan; solo aparecen en las cards.
 - Los pedidos **sin conductor** se suman al vendedor por defecto
@@ -1260,9 +1274,9 @@ Cómo ejecutarlas: ver `README.md`.
   `closure_export.py` cuando Siigo defina columnas y códigos.
 - **Cancelación de pedido**: no existe aún un endpoint `CANCELLED` explícito con sus propias
   reglas de transición.
-- **Refresh token en cookie `httpOnly`**: Cookie `httpOnly` + `Secure`, configurar CORS 
-  con `allow_credentials=True` y orígenes explícitos, decidir `SameSite` según si frontend/backend 
-  comparten dominio (detalle en el `README.md`). En esa configuración de CORS, exponer `Content-Disposition` (`expose_headers`) para que el frontend lea el nombre de los archivos descargados (Excel del cierre, PDF).
+- **Contraseña inicial de los domiciliarios**: se crean con la contraseña de la data
+  inicial (`INITIAL_PASSWORD` en `driver_service.py`) porque hoy el VENDEDOR no inicia
+  sesión. Cambiarla (y permitir asignar una) antes de construir la app del domiciliario.
 - **Unificar formato de error 422 de Pydantic** con el formato uniforme de `BusinessError`
   (o resolverlo del lado del frontend con un segundo handler).
 - **Rol de domiciliario operando sus propios pedidos** (marcar entrega desde app móvil).
