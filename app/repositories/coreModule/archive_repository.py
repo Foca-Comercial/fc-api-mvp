@@ -1,6 +1,7 @@
 from datetime import date
+from typing import Any
 
-from sqlalchemy import delete, exists, func, select
+from sqlalchemy import Date, case, cast, delete, exists, func, select
 from sqlalchemy.orm import Session
 
 from app.models.coreModule.archive_spreadsheet import ArchiveSpreadsheet
@@ -9,6 +10,7 @@ from app.models.coreModule.daily_order_counter import DailyOrderCounter
 from app.models.coreModule.monthly_archive import MonthlyArchive
 from app.models.coreModule.order import Order
 from app.models.securityModule.user_session import UserSession
+from app.utils.enums.order_state import OrderState
 
 
 class RepositoryArchiveSpreadsheet:
@@ -55,6 +57,32 @@ class RepositoryMonthlyArchive:
         return row
 
 
+class RepositoryArchiveOverview:
+    def get_order_months(self, db: Session, *, before: date) -> list[Any]:
+        """Pedidos por mes de entrega (delivery_date < `before`): mes (primer día),
+        cantidad y ventas sin cancelados. La BD retiene pocos meses, así que
+        agrupar es barato."""
+        month = cast(func.date_trunc("month", Order.delivery_date), Date)
+        sales = func.coalesce(
+            func.sum(
+                case(
+                    (Order.state != OrderState.CANCELLED, Order.order_total), else_=0
+                )
+            ),
+            0,
+        )
+        stmt = (
+            select(
+                month.label("month"),
+                func.count(Order.id_order).label("orders_count"),
+                sales.label("total_sales"),
+            )
+            .where(Order.delivery_date < before)
+            .group_by("month")
+        )
+        return list(db.execute(stmt).all())
+
+
 class RepositoryPurge:
     """Borrados masivos del archivado. Sin commit: los confirma el servicio."""
 
@@ -99,6 +127,7 @@ class RepositoryPurge:
 
 
 purge_repository = RepositoryPurge()
+archive_overview_repository = RepositoryArchiveOverview()
 
 
 # Clave fija del bloqueo de archivado: dos exportaciones/purgas no corren a la vez

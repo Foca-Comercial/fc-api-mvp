@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -47,3 +48,33 @@ class ProductCatalogItem(BaseModel):
     effective_price: Decimal = Field(
         ..., description="agreed_price si existe, si no base_price"
     )
+
+
+# -----------------------------------------------------
+# Panel de administración (/products/admin)
+# -----------------------------------------------------
+@dataclass(frozen=True)
+class ProductAdminFilters:
+    """Filtros del listado de administración (ya validados por el router)."""
+
+    search: str | None = None  # código (empieza por) o nombre (contiene)
+    active: bool | None = None  # None = activos e inactivos
+
+
+class ProductAdminRow(BaseModel):
+    id_product: int
+    code: str
+    name: str
+    description: str | None
+    base_price: Decimal
+    active: bool
+    special_prices_count: int = Field(
+        ..., description="Clientes con precio especial pactado para el producto"
+    )
+    in_use: bool = Field(
+        ...,
+        description="Tiene pedidos: su código ya no se puede cambiar (lo usan el "
+        "cierre, Siigo y el archivado)",
+    )
+
+    model_config = ConfigDict(from_attributes=True)

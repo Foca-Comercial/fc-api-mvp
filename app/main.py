@@ -7,6 +7,7 @@ from app.api.routers.coreModule import (
     archive_router,
     client_route_router,
     client_router,
+    driver_router,
     order_detail_router,
     order_router,
     product_router,
@@ -71,6 +72,7 @@ app.include_router(user_vehicle_router.router, prefix="/api/v1")
 app.include_router(shift_closure_router.router, prefix="/api/v1")
 app.include_router(client_route_router.router, prefix="/api/v1")
 app.include_router(archive_router.router, prefix="/api/v1")
+app.include_router(driver_router.router, prefix="/api/v1")
 
 # Registro de Excepciones
 register_exception_handlers(app)

@@ -1,6 +1,14 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CHAR, BigInteger, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import (
+    CHAR,
+    BigInteger,
+    Boolean,
+    ForeignKey,
+    Index,
+    UniqueConstraint,
+    true,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -26,7 +34,14 @@ class UserVehicle(Base):
         BigInteger, primary_key=True, autoincrement=True
     )
 
+    # Código del vendedor en Siigo: es de la ASIGNACIÓN (domiciliario + vehículo), no
+    # de la persona. Un domiciliario tiene un código por cada vehículo que maneja.
     code: Mapped[str] = mapped_column(CHAR(2), nullable=False, unique=True)
+    # Inactiva = retirada: no se ofrece al asignar pedidos; sus pedidos y cierres se
+    # conservan (por eso no se borra si ya tiene pedidos o cierres).
+    active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
 
     # Claves Foraneas
     id_user_role: Mapped[int] = mapped_column(

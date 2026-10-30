@@ -65,13 +65,15 @@ app/
 │   │                              # DailyOrderCounter, MonthlyArchive, ArchiveSpreadsheet
 │   └── parametersModule/         # Zone, Neighborhood, Route, Vehicle
 ├── schemas/                      # DTOs Pydantic, mismo agrupamiento que models/
-│   ├── auth/                     # Token, RefreshRequest, SessionCreate/Update
+│   ├── auth/                     # Token, TokenPair, SessionCreate/Update
+│   ├── common/                   # Page[T] y PageParams (listados paginados)
 │   ├── securityModule/
 │   ├── coreModule/
 │   └── parametersModule/
 ├── repositories/                  # Acceso a datos (capa Data)
 │   ├── base_repository.py        # CRUD genérico + helpers reutilizables
 │   ├── time_filters.py           # on_bogota_day / between_bogota_dates / on_db_today
+│   ├── pagination.py             # paginate / count_rows (OFFSET/LIMIT + total en SQL)
 │   └── <mismos módulos que models/>
 ├── services/                      # Lógica de negocio (capa Business)
 │   ├── base_service.py           # CRUD genérico + hooks de validación declarativa
@@ -129,6 +131,10 @@ suyo con estas variables:
 | `GOOGLE_CREDENTIALS_FILE` | Solo para exportar a Sheets | — (ruta al JSON de la cuenta de servicio de Google) |
 | `HISTORY_RETENTION_MONTHS` | No | `2` (meses que se conservan en la BD, incluido el vigente) |
 | `DEFAULT_SELLER_CODE` | No | `01` (`user_vehicle.code` que recibe en el cierre los pedidos sin conductor) |
+| `COOKIE_SECURE` | No | `false` (`true` en producción con HTTPS) |
+| `COOKIE_SAMESITE` | No | `lax` (`none` si front y API quedan en dominios distintos; exige `Secure`) |
+| `COOKIE_DOMAIN` | No | — (dominio de la cookie del refresh token) |
+| `CORS_ORIGINS` | No | `[]` (sin CORS: el front usa el proxy de desarrollo o el mismo origen) |
 
 ---
 
@@ -194,12 +200,56 @@ servicio sigue heredando `BaseService` para conservar `get`/`get_all`/`update`, 
 métodos propios en vez de forzar la operación dentro de `create()`/`update()` genéricos
 (ver sección 10).
 
-**`get_all` y registros inactivos (decisión explícita):** solo `Client`, `Product` y
-`Route` sobrescriben `get_all` para excluir los registros con `active = False`, porque son
-los que se listan en el flujo operativo (formulario de pedido). Las cards de la vista de
-Rutas usan su propia consulta (`/routes/cards`), que sí incluye las inactivas. El resto de entidades devuelve
-también los inactivos **a propósito** — sus listados son de administración, donde ver lo
-desactivado es útil.
+**`get_all` y registros inactivos (decisión explícita):** los repositorios de entidades con
+`active` (clientes, productos, rutas, barrios, zonas, vehículos, personas, usuarios y roles)
+sobrescriben `get_all` para devolver solo los activos: son los que se ofrecen en los
+flujos operativos y en los selectores. Ver también los inactivos es tarea de los listados
+del panel de administración (`/xxx/admin`, paginados y con filtro de estado) y de las cards
+de la vista de Rutas (`/routes/cards`), que tienen sus propias consultas.
+
+### Listados paginados en el servidor (vistas de administración)
+
+Los listados de administración (clientes, productos, domiciliarios, etc.) crecen sin
+límite, así que se paginan, filtran y ordenan **en PostgreSQL**, no en el frontend ni con
+el `GET /` genérico (`skip`/`limit`, sin total y con tope de 100). Todos responden el
+mismo contrato:
+
+```json
+{"page": 1, "page_size": 25, "total": 134, "pages": 6, "items": [...]}
+```
+
+Piezas (una por capa):
+
+| Capa | Pieza | Qué hace |
+|---|---|---|
+| Router | `params: PageParams = Depends(get_page_params)` (`api/dependencies.py`) | Valida `page` (≥ 1) y `page_size` (1–200, por defecto 25) |
+| Repository | `paginate(db, stmt, params, scalars=..., count_stmt=...)` (`repositories/pagination.py`) | Cuenta el total del filtro y trae solo la página (`OFFSET`/`LIMIT`) |
+| Service | `Page[Row].build(items, total=..., params=...)` (`schemas/common/page_schema.py`) | Arma la respuesta y calcula `pages` |
+
+```python
+# repositorio
+def get_admin_page(self, db, filters, params):
+    stmt = select(...).where(...).order_by(Client.name, Client.id_client)
+    return paginate(db, stmt, params)
+
+# servicio
+rows, total = client_repository.get_admin_page(db, filters, params)
+items = [ClientAdminRow.model_validate(r, from_attributes=True) for r in rows]
+return Page[ClientAdminRow].build(items, total=total, params=params)
+
+# router
+@router.get("/admin", response_model=Page[ClientAdminRow])
+def list_clients_admin(params: PageParams = Depends(get_page_params), ...): ...
+```
+
+- El `ORDER BY` termina siempre en una columna única (la PK): con empates, PostgreSQL
+  puede repetir u omitir filas entre páginas.
+- `paginate` no hace la segunda consulta si no hay registros o la página pedida está más
+  allá del final (responde `items: []` con el `total` real, y el frontend vuelve a la
+  última página).
+- `count_stmt` permite contar sin los joins que solo aportan columnas de visualización.
+- El histórico (`OrderHistoryPage`) es anterior y conserva su propio formato (agrega
+  `date_from`, `date_to` y `total_sales`).
 
 ### Validaciones declarativas (`services/validation.py`)
 
@@ -504,7 +554,8 @@ siendo la garantía final.
 - **Todo o nada:** un único `commit()` al final; cualquier error hace `rollback()`.
 - **Vendedor por defecto:** los seeds asignan a "HIELO FOCA" (usuario `admin`) el rol
   `VENDEDOR` y un `user_vehicle` con código `01` (ver Vista Cierre). En una BD que ya tenía
-  datos hay que crearlo a mano (`POST /user_roles` + `POST /user_vehicles`).
+  datos se crea desde el panel (Domiciliarios) o con `POST /users_roles` +
+  `POST /users_vehicles`.
 
 ---
 
@@ -552,7 +603,15 @@ alembic upgrade head
 | Token | Vida | Dónde vive | Propósito |
 |---|---|---|---|
 | **Access token** | Corta (60 min, configurable) | En memoria del frontend | Autoriza cada petición. Stateless — nunca se guarda en BD. |
-| **Refresh token** | Larga (30 días, configurable) | Body de respuesta (cookie en `httpOnly`) | Renueva el access token sin re-login. **Con estado**, registrado en `user_session`. |
+| **Refresh token** | Larga (30 días, configurable) | Cookie `httpOnly` (ruta `/api/v1/auth`); nunca en el body | Renueva el access token sin re-login. **Con estado**, registrado en `user_session`. |
+
+**Cookie del refresh token (`auth_router.py`):** `login` y `refresh` la ponen
+(`httponly`, `secure`/`samesite`/`domain` según `COOKIE_*`, `path=/api/v1/auth`: el
+navegador solo la envía a los endpoints de auth); `refresh` y `logout` la leen; `logout` y
+`logout-all` la borran con los mismos `path`/`domain`. El body (`Token`) solo trae el
+access token (`TokenPair` es interno del servicio). CORS solo se activa con `CORS_ORIGINS`:
+orígenes explícitos, `allow_credentials=True` y `expose_headers=["Content-Disposition"]`
+para que el front lea el nombre de los archivos descargados.
 
 **Por qué el refresh token necesita tabla propia:** un JWT es stateless por diseño — el
 servidor nunca lo "recuerda", solo valida su firma y `exp`. Esto es ideal para el access
@@ -763,7 +822,14 @@ class OrderItemSync(BaseModel):
 ```
 Cualquier `OrderDetail` existente que **no** aparezca en la lista enviada se elimina. Mismo
 patrón de atomicidad (`flush`/`commit` único) que la creación. Solo permitido mientras
-`order.state == PENDING`. La lista final tampoco puede repetir productos (misma validación
+`order.state == PENDING`.
+
+**Productos desactivados después de tomar el pedido:** un renglón que el pedido ya tenía
+(`id_order_detail` existente y mismo `id_product`) conserva su producto aunque esté
+inactivo: se le puede cambiar cantidad o precio, o quitarlo, sin bloquear el resto de la
+edición. Solo un producto **nuevo** en el pedido, o un renglón que cambia de producto,
+exige producto activo (422 `REFERENCE_INACTIVE`). `GET /orders/{id}/details` trae
+`product_active` por renglón para que el editor lo marque. La lista final tampoco puede repetir productos (misma validación
 que la creación, aplicada antes de modificar nada). Se valida en el service y no con un
 `UniqueConstraint(id_order, id_product)` en BD, porque la sincronización borra y reescribe
 renglones dentro de la misma transacción.
@@ -814,8 +880,10 @@ datos de un cliente existente en el flujo de registro de pedido. Solo devuelve c
 
 ### Vista de Rutas
 
-Roles: `GESTOR_COMERCIAL` (y `ADMINISTRADOR`). Desactivar/eliminar una ruta
-(`DELETE /routes/{id}`) sigue siendo solo de `ADMINISTRADOR`.
+Roles: el `GESTOR_COMERCIAL` solo **lee** lo que usa su vista de Rutas
+(`GET /routes/`, `/routes/cards`, `/routes/{id}` y `/routes/{id}/clients`). Crear,
+editar y desactivar rutas, el selector de clientes disponibles y asignar o quitar
+clientes son solo de `ADMINISTRADOR` (panel de administración).
 
 - **`GET /routes/cards?only_active=false`**: una card por ruta con nombre, `days_week`,
   hora de salida, estado y `clients_count` (clientes **activos** asignados), más
@@ -881,8 +949,9 @@ reciente al más antiguo.
 
 ### Vista Cierre — factura global por vendedor y exportación a Siigo
 
-El cierre del día consolida los pedidos **despachados y entregados** de un día (el de su
-creación, en Bogotá) en una factura global por vendedor (`user_vehicle`). Reglas:
+El cierre del día consolida los pedidos **despachados y entregados** de un día (su
+`delivery_date`, el día de entrega) en una factura global por vendedor (`user_vehicle`).
+Reglas:
 
 - `PENDING` y `CANCELLED` no se facturan; solo aparecen en las cards.
 - Los pedidos **sin conductor** se suman al vendedor por defecto
@@ -922,6 +991,150 @@ La consolidación (`ShiftClosureService.consolidate`) es una sola y la usan el r
 exportación: renglones agrupados por (vendedor, producto, precio) en SQL y fusión en Python
 de los pedidos sin conductor con los propios del vendedor por defecto.
 
+### Panel de administración (solo `ADMINISTRADOR`)
+
+Funciones exclusivas del administrador, servidas al módulo `/administracion` del frontend.
+Los listados usan la paginación en el servidor de la sección 3.
+
+**Clientes** (`/clients/admin`): solo clientes **registrados** (`is_registered=True`).
+Los temporales (creados desde `/orders/new-client`) no se gestionan aquí; los borra la purga
+mensual.
+
+- **`GET /clients/admin?search=&active=&id_zone=&page=&page_size=`** → `Page[ClientAdminRow]`,
+  por nombre (A-Z). `search` busca en el nombre (contiene) o el teléfono (empieza por), con
+  los comodines `%` y `_` tratados como texto (`autoescape`). `active` sin valor trae activos
+  e inactivos. Cada fila trae barrio, zona, `special_prices_count` y `routes_count`
+  (subconsultas correlacionadas: solo se calculan para las filas de la página; el conteo del
+  total usa una consulta sin ellas).
+- **`POST /clients/admin`** (`ClientAdminCreate`): crea el cliente con `is_registered=True`
+  (lo fija el servicio; no se expone). Nombre y dirección con `UpperText`, teléfono de 10
+  dígitos (`^\d{10}$`) y barrio existente y activo.
+- **`PATCH /clients/admin/{id}`** (`ClientAdminUpdate`, parcial): editar, **desactivar**
+  (`{"active": false}`) o **reactivar** (`{"active": true}`). Un cliente desactivado deja de
+  aparecer al tomar pedidos (búsqueda), en las rutas y en sus plantillas; su historial de
+  pedidos se conserva. No hay borrado físico: los pedidos lo referencian (`ON DELETE
+  RESTRICT`). Rechaza clientes temporales (422 `CLIENT_NOT_REGISTERED`) y `null` en campos
+  obligatorios (422 `REQUIRED_FIELD`).
+- Responden con la misma fila del listado (`ClientAdminRow`), así el frontend actualiza la
+  tabla sin otra consulta de detalle.
+
+**Precios especiales del cliente** (`/clients/admin/{id}/special-prices`): un precio
+pactado por producto (`uq_special_price_client_product`). Solo clientes registrados (422
+`CLIENT_NOT_REGISTERED` si es temporal).
+
+- **`GET`** → `list[ClientSpecialPriceRow]` por código de producto: producto (código,
+  nombre, si está activo), `base_price` y `agreed_price`. Incluye productos inactivos (que
+  no se ofrecen en los pedidos) para que se vean y se puedan quitar.
+- **`PUT /{id_product}`** `{"agreed_price": ...}` asigna o cambia el precio (idempotente):
+  un *upsert* (`INSERT ... ON CONFLICT DO UPDATE`) en una sola sentencia, así dos
+  administradores a la vez no generan duplicados. Un precio **nuevo** exige producto
+  existente y activo; el de un producto que se desactivó después sí se puede editar.
+- **`DELETE /{id_product}`**: borra el precio (404 si no existía). No hay borrado lógico:
+  la tabla no tiene `active`, y los pedidos ya tomados guardan su propio `unit_price` en el
+  detalle, así que no se pierde historial.
+- Se usan en el catálogo del pedido (`effective_price`) y en la plantilla y creación de
+  pedidos por ruta (solo productos con precio especial). Un cambio de precio aplica a los
+  pedidos que se tomen después; los ya creados no cambian.
+- El CRUD genérico `/specials_customers_prices` sigue siendo solo de `ADMINISTRADOR`.
+
+**Productos** (`/products/admin`):
+
+- **`GET /products/admin?search=&active=&page=&page_size=`** → `Page[ProductAdminRow]`, por
+  código. `search` busca el inicio del código o una parte del nombre. Cada fila trae
+  `special_prices_count` (clientes con precio pactado) e `in_use` (tiene pedidos; un
+  `EXISTS` sobre `idx_order_detail_product`), ambos solo para las filas de la página.
+- **`POST /products/admin`** (`ProductCreate`): código de 3 dígitos único, nombre y
+  descripción con `UpperText`, precio base ≥ 0 con 2 decimales.
+- **`PATCH /products/admin/{id}`** (`ProductUpdate`, parcial): editar, desactivar o
+  reactivar. Un producto desactivado deja de ofrecerse en el catálogo del pedido y en las
+  rutas; los pedidos ya tomados lo conservan. Un cambio de precio base aplica a los pedidos
+  que se tomen después (cada renglón guarda su `unit_price`).
+- **El código no cambia si el producto ya tiene pedidos** (422 `PRODUCT_CODE_IN_USE`): el
+  cierre, la exportación a Siigo, el histórico y el archivado leen el código **actual** del
+  producto, así que cambiarlo reescribiría cómo se ven los pedidos ya tomados. Reenviar el
+  mismo código sí se permite. Si hace falta otro código, se crea un producto nuevo y se
+  desactiva el anterior.
+- No hay borrado físico: los renglones de pedido lo referencian.
+
+**Domiciliarios y asignaciones** (`/drivers/admin`, router `driver_router.py`,
+servicio `driver_service.py`, consultas en `driver_repository.py`):
+
+Un domiciliario no es una tabla: es **Person + User + UserRole (rol `VENDEDOR`)**. Cada
+**asignación** (`user_vehicle`) es la pareja domiciliario + vehículo con su propio código
+de 2 dígitos, que es el **código de vendedor en Siigo**: un domiciliario tiene un código
+por cada vehículo que maneja, y un vehículo lo comparten varios domiciliarios. El cierre,
+el selector de domiciliarios del pedido y Siigo trabajan con la asignación, no con la
+persona.
+
+- **`GET /drivers/admin?search=&active=&page=&page_size=`** → `Page[DriverAdminRow]`, por
+  nombre. `search` busca en nombre + apellido (contiene) o en el inicio de cualquiera de sus
+  códigos. Cada fila trae `codes` (de sus asignaciones activas), `assignments_count` y
+  `protected` (ver abajo).
+- **`POST /drivers/admin`** (`DriverCreate`: nombre, apellido, teléfono de 10 dígitos y
+  correo opcionales): crea persona, usuario y rol `VENDEDOR` en una sola transacción. El
+  usuario es `nombre.apellido` (primera palabra de cada uno, sin tildes; `2`, `3`… si ya
+  existe) y la contraseña inicial es la de la data inicial (`INITIAL_PASSWORD`): hoy el
+  VENDEDOR no inicia sesión; se cambiará al construir su app. 422 `SELLER_ROLE_MISSING` si
+  no existe el rol.
+- **`PATCH /drivers/admin/{id_user}`**: datos de la persona y `active` (desactiva o reactiva
+  usuario y persona). Sus asignaciones dejan de ofrecerse; sus pedidos y cierres se
+  conservan. **Protegido** (422): un usuario con otro rol, p. ej. ADMINISTRADOR
+  (`DRIVER_PROTECTED`: desactivarlo le quitaría el acceso), o dueño del vendedor por defecto
+  (`DEFAULT_SELLER_PROTECTED`). El usuario no cambia al editar el nombre.
+- **Asignaciones** — `GET/POST /drivers/admin/{id_user}/assignments` y
+  `PATCH/DELETE .../assignments/{id_user_vehicle}`:
+  - Código de 2 dígitos único (409 `SELLER_CODE_TAKEN`), vehículo existente y activo, y una
+    sola asignación por pareja domiciliario-vehículo (409 `DUPLICATE_ASSIGNMENT`: si está
+    inactiva, se reactiva).
+  - **Con pedidos o cierres (`in_use`) solo cambia `active`** (422 `ASSIGNMENT_IN_USE`): el
+    cierre y Siigo usan el código actual, así que cambiar el código o el vehículo
+    reescribiría lo ya facturado. Se desactiva y se crea otra.
+  - `DELETE` solo de una asignación que nunca se usó (p. ej. creada por error).
+  - La del **vendedor por defecto** (`DEFAULT_SELLER_CODE`) no se desactiva, cambia ni borra
+    (`DEFAULT_SELLER_PROTECTED`): el cierre le suma los pedidos sin conductor.
+  - **`GET /drivers/admin/next-code`**: primer código libre de 01 a 99 (sugerencia). Con 2
+    dígitos hay como máximo 99 asignaciones, contando las inactivas.
+- **`user_vehicle.active`** (migración `b7e2f4a9c1d3`; las existentes quedan activas): una
+  asignación inactiva no aparece en `/users_vehicles/dropdown` y `ReferenceRule` /
+  `ensure_reference` la rechazan al asignar o reasignar pedidos (422 `REFERENCE_INACTIVE`).
+  Un pedido que ya la tenía la conserva: se despacha y se factura igual.
+
+**Vehículos** (`/vehicles/admin`):
+
+- **`GET /vehicles/admin?search=&active=&page=&page_size=`** → `Page[VehicleAdminRow]`, por
+  nombre, con `assignments_count` (asignaciones activas con ese vehículo).
+- **`POST /vehicles/admin`** y **`PATCH /vehicles/admin/{id}`**: nombre único (ignora
+  mayúsculas y espacios) y estado. El nombre se puede cambiar siempre: el cierre y Siigo
+  usan el código de la asignación, no el vehículo.
+- **Desactivar un vehículo** oculta todas sus asignaciones del selector de domiciliarios del
+  pedido (`/users_vehicles/dropdown` filtra `Vehicle.active`); los pedidos que ya las
+  tienen las conservan. Reactivarlo las vuelve a ofrecer. No hay borrado físico: las
+  asignaciones lo referencian.
+
+**Rutas** (`/routes/admin` y los endpoints de la Vista de Rutas, que ya son solo de
+`ADMINISTRADOR` para escribir):
+
+- **`GET /routes/admin?search=&active=&day=&page=&page_size=`** → `Page[RouteAdminRow]`, por
+  nombre: días, hora de salida, estado y `clients_count` (clientes activos asignados).
+  `day` (1 = lunes … 7 = domingo) filtra las rutas que salen ese día
+  (`día == any_(days_week)`).
+- Crear y editar usan `POST /routes/` y `PATCH /routes/{id}` (nombre único, al menos un
+  día, hora de salida). El `PATCH` rechaza `null` en columnas obligatorias (422
+  `REQUIRED_FIELD`). Un cambio de días u hora aplica de inmediato a «Rutas del día»; los
+  pedidos ya generados no cambian.
+- Desactivar (`PATCH {"active": false}`) saca la ruta de `/orders/routes-of-day`: ya no se
+  generan pedidos desde ella. Sus pedidos conservan `id_route`. No hay borrado físico.
+- `GET /routes/{id}/clients` y `/available-clients` traen `special_prices_count`
+  (productos **activos** con precio especial del cliente): sin ellos el cliente aparece en
+  la plantilla de la ruta pero no se le puede generar pedido.
+
+**Domiciliario de un pedido (blindaje):** al crear un pedido (individual o por ruta) o al
+reasignarlo (`PATCH /orders/{id}` con un `id_user_vehicle` distinto), la asignación, su
+vehículo y su domiciliario (usuario y persona) deben estar activos (422
+`REFERENCE_INACTIVE`, `field: "id_user_vehicle"`; `OrderService._ensure_vehicle` con
+`user_vehicle_repository.get_assignment_status`). Un pedido que ya lo tenía lo conserva:
+reenviar el mismo `id_user_vehicle` no se valida de nuevo, y se despacha y factura igual.
+
 ### Archivado mensual — Google Sheets y purga
 
 Para que la BD no crezca sin límite, se conservan `HISTORY_RETENTION_MONTHS` meses (2: el
@@ -946,6 +1159,16 @@ Todo es manual y solo de `ADMINISTRADOR` (`/archive`):
   `MONTH_NOT_CLOSED` (lista los días), porque sin los pedidos ya no se podría generar su
   cierre. Los `shift_closure` no se borran: quedan como registro de lo enviado a Siigo.
 - **`GET /archive/`**: bitácora de meses exportados y purgados.
+- **`GET /archive/months`** (vista Archivo mensual del panel): `current_month`,
+  `first_retained_month`, `retention_months` y una fila por mes hasta el vigente (del más
+  reciente al más antiguo): los que tienen pedidos en la BD (por `delivery_date`, agrupados
+  en SQL) y los ya archivados (los purgados quedan con `orders_count = 0`). Cada fila trae
+  pedidos y ventas en la BD (sin cancelados), estado y fechas del archivado, la URL del
+  spreadsheet del año (null si no está registrado), `retained`, `unclosed_days` (solo fuera
+  de la retención: días facturables sin cierre exportado o con cambios posteriores) y los
+  permisos ya resueltos: `can_export` (tiene pedidos, no está purgado y hay spreadsheet) y
+  `can_purge` (además, fuera de la retención y sin días sin cierre). Las mismas reglas las
+  vuelven a validar `export` y `purge`.
 
 Exportación y purga se serializan con un `pg_advisory_xact_lock`: una a la vez. El servicio
 depende del protocolo `SheetsWriter`, inyectado con `Depends(get_sheets_writer)`; en los
@@ -1029,7 +1252,16 @@ Cómo ejecutarlas: ver `README.md`.
   repetidos o inexistentes), máquina de estados (dispatch/deliver), `PATCH` de conductor,
   `sync_items`, detalle y PDF sin conductor, dashboards por estado, día y hora de Bogotá,
   endpoints retirados (`DELETE /orders`, escritura en `/orders_details`) y
-  `BaseRepository.update` sobre objetos expirados, rutas y pedidos por ruta, consecutivo
+  `BaseRepository.update` sobre objetos expirados, rutas (gestión solo de ADMINISTRADOR,
+  lectura del GESTOR) y pedidos por ruta, paginación en el servidor, panel de clientes
+  (listado, filtros, crear, editar, desactivar/reactivar y roles) y sus precios especiales
+  (asignar, editar, quitar, productos inactivos, plantilla de ruta), panel de productos
+  (listado, código único y bloqueado con pedidos, desactivar/reactivar), domiciliarios y
+  asignaciones (usuario automático, protecciones, códigos, uso, vendedor por defecto),
+  vehículos (conteo de asignaciones, nombre único, desactivar oculta del selector),
+  rutas del panel (filtros por estado y día, precios especiales de sus clientes), el
+  blindaje del domiciliario de un pedido, productos desactivados en pedidos pendientes y
+  el resumen de meses del archivado, consecutivo
   diario, filtros por rango de fechas, histórico, archivado (exportación, verificación y
   purga) y cierre (resumen, Excel, reexportación y bloqueo de la purga) — incluye la
   regresión de cada bug corregido.
@@ -1042,9 +1274,9 @@ Cómo ejecutarlas: ver `README.md`.
   `closure_export.py` cuando Siigo defina columnas y códigos.
 - **Cancelación de pedido**: no existe aún un endpoint `CANCELLED` explícito con sus propias
   reglas de transición.
-- **Refresh token en cookie `httpOnly`**: Cookie `httpOnly` + `Secure`, configurar CORS 
-  con `allow_credentials=True` y orígenes explícitos, decidir `SameSite` según si frontend/backend 
-  comparten dominio (detalle en el `README.md`). En esa configuración de CORS, exponer `Content-Disposition` (`expose_headers`) para que el frontend lea el nombre de los archivos descargados (Excel del cierre, PDF).
+- **Contraseña inicial de los domiciliarios**: se crean con la contraseña de la data
+  inicial (`INITIAL_PASSWORD` en `driver_service.py`) porque hoy el VENDEDOR no inicia
+  sesión. Cambiarla (y permitir asignar una) antes de construir la app del domiciliario.
 - **Unificar formato de error 422 de Pydantic** con el formato uniforme de `BusinessError`
   (o resolverlo del lado del frontend con un segundo handler).
 - **Rol de domiciliario operando sus propios pedidos** (marcar entrega desde app móvil).
@@ -1101,3 +1333,6 @@ Cómo ejecutarlas: ver `README.md`.
     para reemplazarlos en los tests; sus fallas se traducen a `ExternalServiceError` (502).
 16. Operaciones que no deben correr dos a la vez sobre el mismo recurso global (archivado)
     → `pg_advisory_xact_lock`; sobre una fila → `get_for_update()`.
+17. Listados que crecen sin límite (administración) → paginados en el servidor con
+    `get_page_params` + `paginate` + `Page[Row]` (sección 3), con filtros y orden en SQL y
+    el `ORDER BY` terminado en la PK. Nunca traer la tabla completa al frontend.

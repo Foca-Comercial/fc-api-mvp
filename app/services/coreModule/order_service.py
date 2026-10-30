@@ -42,7 +42,6 @@ from app.schemas.coreModule.route_order_schema import (
     RouteTemplateProduct,
 )
 from app.services.base_service import BaseService
-from app.services.validation import ReferenceRule
 from app.utils.enums.order_state import OrderState
 from app.utils.exceptions.business_exceptions import (
     BusinessError,
@@ -59,10 +58,6 @@ MAX_SCHEDULE_DAYS = 60
 
 
 class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
-    references = (
-        ReferenceRule("id_user_vehicle", "Vehículo", user_vehicle_repository),
-    )
-
     def __init__(self):
         super().__init__(repository=order_repository, entity_name="Pedido")
 
@@ -172,6 +167,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 id_product=detail.id_product,
                 product_code=detail.product.code,
                 product_name=detail.product.name,
+                product_active=detail.product.active,
                 cant=detail.cant,
                 unit_price=detail.unit_price,
                 subtotal=detail.subtotal,
@@ -284,14 +280,31 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             )
         return requested
 
-    def _ensure_vehicle(self, db: Session, id_user_vehicle: int) -> None:
-        self._ensure_reference(
-            db,
-            user_vehicle_repository,
-            id_user_vehicle,
-            field="id_user_vehicle",
-            label="Vehículo",
-        )
+    # Domiciliario (asignación domiciliario + vehículo) que se le asigna a un pedido:
+    # debe existir y estar activa, igual que su vehículo y su domiciliario. Se valida
+    # al crear y al reasignar; un pedido que ya lo tenía lo conserva aunque después
+    # se desactive (se despacha y se factura igual).
+    @staticmethod
+    def _ensure_vehicle(db: Session, id_user_vehicle: int) -> None:
+        status = user_vehicle_repository.get_assignment_status(db, id_user_vehicle)
+        if status is None:
+            raise BusinessValidationError(
+                f"Vehículo con ID {id_user_vehicle} no existe.",
+                field="id_user_vehicle",
+            )
+        problem = None
+        if not status.active:
+            problem = "Esta asignación de domiciliario y vehículo está inactiva."
+        elif not status.vehicle_active:
+            problem = f"El vehículo {status.vehicle_name} está inactivo."
+        elif not status.driver_active:
+            problem = f"El domiciliario {status.driver_name} está inactivo."
+        if problem:
+            raise BusinessValidationError(
+                f"{problem} Elige otro domiciliario.",
+                field="id_user_vehicle",
+                code="REFERENCE_INACTIVE",
+            )
 
     # Inserta pedido + detalles SIN commit (flush): lo usan la creación
     # individual y la creación en lote por ruta, que confirma todo al final.
@@ -668,13 +681,22 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
 
         total = Decimal("0")  # noqa: FURB157
         for item in items:
-            self._ensure_reference(
-                db,
-                product_repository,
-                item.id_product,
-                field="id_product",
-                label="Producto",
+            # Un renglón que el pedido ya tenía conserva su producto aunque este se
+            # haya desactivado después (se le puede cambiar cantidad o precio, o
+            # quitarlo). Un producto nuevo en el pedido, o un renglón que cambia de
+            # producto, sí debe existir y estar activo.
+            kept = (
+                item.id_order_detail is not None
+                and existing_details[item.id_order_detail].id_product == item.id_product
             )
+            if not kept:
+                self._ensure_reference(
+                    db,
+                    product_repository,
+                    item.id_product,
+                    field="id_product",
+                    label="Producto",
+                )
             subtotal = item.unit_price * item.cant
 
             if item.id_order_detail is not None:
@@ -726,6 +748,15 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
     ) -> None:
         super()._validate_before_update(db, obj_in, existing)
         sent = obj_in.model_fields_set
+        new_vehicle = obj_in.id_user_vehicle
+        if (
+            "id_user_vehicle" in sent
+            and new_vehicle is not None
+            and new_vehicle != existing.id_user_vehicle
+        ):
+            # Solo se valida si cambia: un pedido conserva su domiciliario aunque
+            # este se haya desactivado después
+            self._ensure_vehicle(db, new_vehicle)
         if existing.state in self._FINAL_STATES:
             raise BusinessValidationError(
                 f"No se puede modificar un pedido en estado '{existing.state.value}'.",

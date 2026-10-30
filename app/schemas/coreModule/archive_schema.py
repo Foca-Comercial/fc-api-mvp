@@ -60,6 +60,49 @@ class PurgeResponse(BaseModel):
     deleted_expired_sessions: int
 
 
+class ArchiveMonthRow(BaseModel):
+    """Un mes en la vista Archivo mensual: lo que hay en la BD y su archivado."""
+
+    month: str = Field(..., description="AAAA-MM")
+    orders_count: int = Field(..., description="Pedidos del mes en la BD")
+    total_sales: Decimal = Field(
+        ..., description="Suma de los pedidos del mes en la BD, sin cancelados"
+    )
+    status: ArchiveStatus | None = Field(
+        None, description="null = nunca se ha exportado"
+    )
+    exported_at: datetime | None = None
+    purged_at: datetime | None = None
+    exported_orders: int | None = Field(
+        None, description="Pedidos en la última exportación (o los purgados)"
+    )
+    spreadsheet_url: str | None = Field(
+        None, description="Spreadsheet del año del mes (null = no registrado)"
+    )
+    retained: bool = Field(
+        ..., description="Dentro de la retención: se exporta, pero no se purga"
+    )
+    unclosed_days: list[date] = Field(
+        default_factory=list,
+        description="Días con pedidos facturables sin cierre exportado (o con cambios "
+        "posteriores). Solo se calcula para meses fuera de la retención: impiden "
+        "purgarlos",
+    )
+    can_export: bool
+    can_purge: bool
+
+
+class ArchiveOverview(BaseModel):
+    current_month: str = Field(..., description="AAAA-MM (Bogotá)")
+    first_retained_month: str = Field(
+        ..., description="Mes más antiguo que se conserva: los anteriores se purgan"
+    )
+    retention_months: int
+    months: list[ArchiveMonthRow] = Field(
+        ..., description="Del más reciente al más antiguo, hasta el mes vigente"
+    )
+
+
 def month_label(month: date) -> str:
     return f"{month.year:04d}-{month.month:02d}"
 

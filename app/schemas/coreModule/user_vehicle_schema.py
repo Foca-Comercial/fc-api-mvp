@@ -14,6 +14,7 @@ class UserVehicleBase(BaseModel):
     )
     id_user_role: int = Field(..., gt=0, description="Usuario-rol (vendedor)")
     id_vehicle: int = Field(..., gt=0, description="Vehículo asignado")
+    active: bool = True
 
 
 class UserVehicleCreate(UserVehicleBase):

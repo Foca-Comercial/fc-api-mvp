@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from fastapi import Depends
+from fastapi import Depends, Query
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,7 @@ from app.core.security import decode_access_token
 from app.db.database import get_db
 from app.models.securityModule.user import User
 from app.repositories.securityModule.user_repository import user_repository
+from app.schemas.common.page_schema import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PageParams
 from app.utils.exceptions.business_exceptions import ForbiddenError, UnauthorizedError
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -56,3 +57,16 @@ def require_roles(*allowed_roles: str):
         return current
 
     return dependency
+
+
+def get_page_params(
+    page: int = Query(1, ge=1, description="Página (1 = la primera)"),
+    page_size: int = Query(
+        DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE, description="Registros por página"
+    ),
+) -> PageParams:
+    """Página pedida en los listados paginados en el servidor:
+
+    def list_x(params: PageParams = Depends(get_page_params), ...): ...
+    """
+    return PageParams(page=page, page_size=page_size)

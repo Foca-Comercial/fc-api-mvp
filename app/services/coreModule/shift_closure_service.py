@@ -1,7 +1,7 @@
 """Cierre del día: consolida por vendedor los pedidos despachados y entregados.
 
 Reglas:
-- Un pedido pertenece al día (Bogotá) en que se creó.
+- Un pedido pertenece a su día de entrega (delivery_date, Bogotá).
 - Se facturan solo DISPATCHED y DELIVERED; PENDING y CANCELLED solo cuentan
   en las cards.
 - Los pedidos sin conductor se suman al vendedor por defecto
@@ -54,7 +54,8 @@ def siigo_seller_code(code: str) -> int:
     if not code.isdigit():
         raise BusinessRuleViolationError(
             f"El vendedor con código '{code}' no tiene un código numérico y Siigo "
-            "lo requiere como número. Corrige el código en /user_vehicles.",
+            "lo requiere como número. Corrige el código en Gestión → "
+            "Domiciliarios.",
             rule_code="INVALID_SELLER_CODE",
         )
     return int(code)
@@ -251,8 +252,8 @@ class ShiftClosureService(
         if id_user_vehicle is None:
             raise BusinessRuleViolationError(
                 f"Hay pedidos despachados sin conductor y no existe el vendedor por "
-                f"defecto con código '{code}'. Créalo en /user_vehicles (o ajusta "
-                "DEFAULT_SELLER_CODE) para poder cerrar el día.",
+                f"defecto con código '{code}'. Créalo en Gestión → Domiciliarios "
+                "(o ajusta DEFAULT_SELLER_CODE) para poder cerrar el día.",
                 rule_code="DEFAULT_SELLER_MISSING",
             )
         return id_user_vehicle
