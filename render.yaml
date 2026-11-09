@@ -39,7 +39,7 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://fc-api.onrender.com/api/*
+        destination: https://fc-api-1ebq.onrender.com/api/*
       - type: rewrite
         source: /*
         destination: /index.html
