@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     # Código (user_vehicle.code) del vendedor al que el cierre asigna los
     # pedidos despachados/entregados sin conductor. Siigo lo recibe como 1.
     DEFAULT_SELLER_CODE: str = Field("01", min_length=2, max_length=2)
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def usar_psycopg2(cls, v: str) -> str:
+        # Render entrega "postgresql://..."; SQLAlchemy 2.1 asume psycopg 3 por defecto
+        for prefijo in ("postgres://", "postgresql://"):
+            if v.startswith(prefijo):
+                return "postgresql+psycopg2://" + v[len(prefijo) :]
+        return v
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
