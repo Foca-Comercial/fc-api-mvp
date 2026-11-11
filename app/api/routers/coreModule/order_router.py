@@ -251,8 +251,12 @@ def sync_order_items(
     order_id: int,
     body: OrderItemsSyncRequest,
     db: Session = Depends(get_db),  # noqa: B008
+    current: CurrentUser = Depends(get_current_user),  # noqa: B008
 ):
-    return order_service.sync_items(db, id_order=order_id, items=body.items)
+    # Quien edita queda registrado como el último que cambió los productos
+    return order_service.sync_items(
+        db, id_order=order_id, items=body.items, id_user=current.user.id_user
+    )
 
 
 @router.patch("/{order_id}", response_model=OrderResponse, roles=["GESTOR_COMERCIAL"])

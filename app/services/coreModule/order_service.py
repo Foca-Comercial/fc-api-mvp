@@ -1,6 +1,7 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.timezone import BOGOTA_TZ, today_bogota
@@ -177,10 +178,13 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             for detail in order.order_details
         ]
 
+        created = order.creation_datetime.astimezone(BOGOTA_TZ)
         return OrderFullDetailResponse(
             id_order=order.id_order,
             purchase_order=order.purchase_order,
-            creation_datetime=order.creation_datetime,
+            creation_datetime=created,
+            creation_date=created.date(),
+            creation_time=created.strftime("%H:%M"),
             delivery_date=order.delivery_date,
             estimated_delivery=order.estimated_delivery,
             dispatch_time=order.dispatch_time,
@@ -196,6 +200,19 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             id_user_vehicle=order.id_user_vehicle,
             driver_code=driver_code,
             driver_name=driver_name,
+            payment_method=order.payment_method,
+            invoice_type=order.invoice_type,
+            has_receipt=order.has_receipt,
+            observations=order.observations,
+            id_route=order.id_route,
+            route_name=order.route.name if order.route else None,
+            taker_name=_person_name(order.user_taker),  # type: ignore[arg-type]
+            items_updater_name=_person_name(order.user_items_updater),
+            items_updated_at=_in_bogota(order.items_updated_at),
+            cancel_reason=order.cancel_reason,
+            cancel_note=order.cancel_note,
+            cancelled_at=_in_bogota(order.cancelled_at),
+            canceller_name=_person_name(order.user_canceller),
             items=items,
         )
 
@@ -699,7 +716,12 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
 
     # Actualiacion de Pedido (Quitar, Agregar, Modificar -> Productos)
     def sync_items(
-        self, db: Session, *, id_order: int, items: list[OrderItemSync]
+        self,
+        db: Session,
+        *,
+        id_order: int,
+        items: list[OrderItemSync],
+        id_user: int,
     ) -> Order:
         order = self.get_for_update(db, id_order)  # 404 si no existe; bloquea la fila
 
@@ -713,6 +735,9 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         self._ensure_no_duplicate_products(items)
 
         existing_details = {d.id_order_detail: d for d in order.order_details}
+        # Para la auditoría: los productos antes de editar, como (producto,
+        # cantidad, precio). Si la lista final es igual, no cuenta como edición.
+        before = _items_snapshot(existing_details.values())
         incoming_ids = {
             i.id_order_detail for i in items if i.id_order_detail is not None
         }
@@ -775,6 +800,11 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             total += subtotal
 
         order.order_total = total
+        if _items_snapshot(items) != before:
+            # Solo la edición de productos (cantidades, precios, agregar o quitar)
+            # registra quién y cuándo; el PATCH y la cancelación no la tocan
+            order.items_updated_at = func.now()  # type: ignore[assignment]
+            order.id_user_items_updater = id_user
         db.add(order)
         db.commit()
         db.refresh(order)
@@ -876,6 +906,23 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
 
 def _ids(values: list[int]) -> str:
     return ", ".join(str(v) for v in values)
+
+
+def _person_name(user) -> str | None:
+    """Nombre y apellido de la persona de un usuario (None si no hay usuario)."""
+    if user is None:
+        return None
+    return f"{user.person.name} {user.person.last_name}"
+
+
+def _in_bogota(value: datetime | None) -> datetime | None:
+    return value.astimezone(BOGOTA_TZ) if value is not None else None
+
+
+def _items_snapshot(items) -> list[tuple[int, int, Decimal]]:
+    """Productos de un pedido como (producto, cantidad, precio), ordenados: sirve
+    igual para los renglones guardados y para la lista que llega al editar."""
+    return sorted((i.id_product, i.cant, Decimal(i.unit_price)) for i in items)
 
 
 order_service = OrderService()

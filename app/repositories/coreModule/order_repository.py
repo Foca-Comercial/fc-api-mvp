@@ -343,6 +343,12 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
                 .joinedload(UserVehicle.user_role)
                 .joinedload(UserRole.user)
                 .joinedload(User.person),
+                # Auditoría: quién lo tomó, quién editó los productos y quién lo
+                # canceló (SQLAlchemy usa un alias distinto para cada usuario)
+                joinedload(Order.user_taker).joinedload(User.person),
+                joinedload(Order.user_items_updater).joinedload(User.person),
+                joinedload(Order.user_canceller).joinedload(User.person),
+                joinedload(Order.route),
             )
             .where(Order.id_order == id_order)
         )
