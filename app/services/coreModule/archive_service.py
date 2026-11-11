@@ -15,9 +15,6 @@ from app.repositories.coreModule.archive_repository import (
     purge_repository,
 )
 from app.repositories.coreModule.order_repository import order_repository
-from app.repositories.coreModule.shift_closure_repository import (
-    shift_closure_repository,
-)
 from app.schemas.coreModule.archive_schema import (
     ArchiveMonthRow,
     ArchiveOverview,
@@ -29,6 +26,7 @@ from app.schemas.coreModule.archive_schema import (
 )
 from app.services.coreModule.archive_export import MONEY_COLUMNS, build_export_table
 from app.services.coreModule.sheets_writer import SERVICE, SheetsWriter
+from app.services.coreModule.shift_closure_service import shift_closure_service
 from app.utils.enums.archive_status import ArchiveStatus
 from app.utils.exceptions.business_exceptions import (
     BusinessRuleViolationError,
@@ -150,7 +148,7 @@ class ArchiveService:
     def _ensure_month_closed(db: Session, archive_month: date) -> None:
         """No se purga un mes con días facturables sin exportar a Siigo: al
         borrar los pedidos ya no se podría generar su cierre."""
-        days = shift_closure_repository.get_unclosed_days(db, archive_month)
+        days = shift_closure_service.unclosed_days(db, archive_month)
         if not days:
             return
         shown = ", ".join(day.strftime("%d/%m") for day in days[:10])
@@ -279,7 +277,7 @@ class ArchiveService:
             unclosed = (
                 []
                 if retained or purged or orders_count == 0
-                else shift_closure_repository.get_unclosed_days(db, month)
+                else shift_closure_service.unclosed_days(db, month)
             )
             exportable = orders_count > 0 and not purged and sheet_id is not None
             months.append(

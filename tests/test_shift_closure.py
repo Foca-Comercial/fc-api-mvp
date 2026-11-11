@@ -16,8 +16,8 @@ from app.repositories.coreModule.shift_closure_repository import (
     shift_closure_repository,
 )
 from app.services.coreModule.closure_export import MEDIA_TYPE
-from app.utils.enums.order_state import OrderState
-from tests.helpers import API, item
+from app.services.coreModule.shift_closure_service import shift_closure_service
+from tests.helpers import API, item, mark_cancelled
 
 URL = f"{API}/shifts_closures"
 
@@ -87,7 +87,7 @@ def test_resumen_consolida_por_vendedor_y_cuenta_estados(
     _dispatch(client, a)
     _dispatch(client, b, deliver=True)
     _dispatch(client, c)
-    db.get(Order, cancelled["id_order"]).state = OrderState.CANCELLED
+    mark_cancelled(db, cancelled["id_order"])
     db.commit()
 
     body = _summary(client)
@@ -264,7 +264,7 @@ def test_exporta_excel_con_un_renglon_por_vendedor_producto_y_precio(
         (99, "Carlos Conductor", "Z91", "BOLSA HIELO 2KG", 2, 3000, 6000),
         (99, "Carlos Conductor", "Z92", "BOLSA HIELO 5KG", 1, 6000, 6000),
         (None, "Carlos Conductor", None, "Total vendedor", 4, None, 14500),
-        (None, None, None, "TOTAL DEL DÍA", 5, None, 22500),
+        (None, None, None, "TOTAL VENTAS", 5, None, 22500),
     ]
     assert rows[0][0].date() == today_bogota()
 
@@ -367,3 +367,343 @@ def test_exportar_sin_vendedor_por_defecto_no_registra_nada(
     assert response.status_code == 422
     assert response.json()["code"] == "DEFAULT_SELLER_MISSING"
     assert _closures(db) == {}
+
+
+# --- Cambios finales B7 (paso 1): categorías, cuadre y huella -----------------------------
+
+
+def test_resumen_separa_la_factura_global_de_las_otras_ventas(
+    client, create_order, data
+):
+    driver = data.user_vehicle.id_user_vehicle
+    p0, p1, p2 = data.products
+    pos_cash = create_order(items=[item(p0, 2)], id_user_vehicle=driver)  # 6000
+    pos_transfer = create_order(
+        items=[item(p1, 1)], id_user_vehicle=driver, payment_method="TRANSFER"
+    )  # 6000
+    fe_cash = create_order(
+        items=[item(p2, 1)], id_user_vehicle=driver, invoice_type="ELECTRONIC"
+    )  # 8000
+    fe_credit = create_order(
+        items=[item(p0, 1)],
+        id_user_vehicle=driver,
+        invoice_type="ELECTRONIC",
+        payment_method="CREDIT",
+    )  # 3000
+    for order in (pos_cash, pos_transfer, fe_cash, fe_credit):
+        _dispatch(client, order)
+
+    body = _summary(client)
+
+    (row,) = body["sellers"]
+    # Factura global: solo el pedido POS en efectivo
+    assert [(p["product_code"], p["quantity"]) for p in row["products"]] == [("Z91", 2)]
+    assert row["total_quantity"] == 2
+    assert Decimal(row["consolidated_total"]) == Decimal("6000")
+    # Todas las ventas del vendedor
+    assert (row["orders_count"], row["other_orders_count"]) == (4, 3)
+    totals = {k: Decimal(v) for k, v in row["totals"].items()}
+    assert totals == {
+        "pos_cash": Decimal("6000"),
+        "electronic_cash": Decimal("8000"),
+        "pos_transfer": Decimal("6000"),
+        "electronic_transfer": Decimal("0"),
+        "pos_credit": Decimal("0"),
+        "electronic_credit": Decimal("3000"),
+    }
+    assert Decimal(row["total_sales"]) == Decimal("23000")
+    assert Decimal(row["cash_to_collect"]) == Decimal("14000")  # 6000 + 8000
+    # Cards: los mismos totales del día
+    cards = body["cards"]
+    assert Decimal(cards["total_income"]) == Decimal("23000")
+    assert Decimal(cards["cash_to_collect"]) == Decimal("14000")
+    assert Decimal(cards["totals"]["electronic_credit"]) == Decimal("3000")
+
+
+def test_cuenta_los_cancelados_despues_de_despachar(client, create_order, db):
+    dispatched_then_cancelled = create_order()
+    cancelled_while_pending = create_order()
+    _dispatch(client, dispatched_then_cancelled)
+    mark_cancelled(db, dispatched_then_cancelled["id_order"])
+    mark_cancelled(db, cancelled_while_pending["id_order"])
+    db.commit()
+
+    cards = _summary(client)["cards"]
+
+    assert cards["cancelled"] == 2
+    assert cards["cancelled_after_dispatch"] == 1  # solo el que ya había salido
+
+
+def test_exportar_guarda_la_huella(client, create_order, db, data):
+    _dispatch(client, create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle))
+
+    assert _export(client).status_code == 200
+
+    closure = _closures(db)[data.user_vehicle.id_user_vehicle]
+    assert closure.signature is not None and len(closure.signature) == 64
+
+
+@pytest.mark.parametrize(
+    "change", [{"payment_method": "TRANSFER"}, {"invoice_type": "ELECTRONIC"}]
+)
+def test_cambiar_pago_o_factura_tras_exportar_desactualiza_el_cierre(
+    client, create_order, data, change
+):
+    """Con la huella se detecta aunque la cantidad de pedidos y el total no cambien."""
+    order = create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle)
+    _dispatch(client, order)
+    _export(client)
+    assert _summary(client)["exported"] is True
+
+    patched = client.patch(f"{API}/orders/{order['id_order']}", json=change)
+    assert patched.status_code == 200, patched.text
+
+    body = _summary(client)
+    assert body["sellers"][0]["export_outdated"] is True
+    assert body["exported"] is False
+
+
+def test_la_hoja_1_solo_lleva_pos_en_efectivo(client, create_order, data):
+    driver = data.user_vehicle.id_user_vehicle
+    p0, p1, _ = data.products
+    _dispatch(client, create_order(items=[item(p0, 2)], id_user_vehicle=driver))
+    _dispatch(
+        client,
+        create_order(
+            items=[item(p1, 1)], id_user_vehicle=driver, payment_method="TRANSFER"
+        ),
+    )
+
+    _, *rows = _sheet_rows(_export(client))
+
+    assert [r[3] for r in rows if r[3]] == ["Z91"]  # solo el producto en efectivo
+    assert rows[-1][7] == 6000  # total del día de la factura global
+
+
+# --- Cambios finales B7 (paso 2): Excel de 3 hojas ---------------------------------------
+
+
+def _workbook(response):
+    assert response.status_code == 200, response.text
+    return load_workbook(BytesIO(response.content))
+
+
+def _rows(sheet) -> list[tuple]:
+    return list(sheet.iter_rows(values_only=True))
+
+
+@pytest.fixture()
+def mixed_day(client, create_order, data, default_seller):
+    """Un día con las categorías mezcladas en dos vendedores:
+    - conductor 99: POS efectivo (6000), POS transferencia (6000), FE crédito (8000)
+    - vendedor por defecto 09 (sin conductor): POS efectivo (3000), FE efectivo (6000)
+    """
+    driver = data.user_vehicle.id_user_vehicle
+    p0, p1, p2 = data.products
+    orders = [
+        create_order(items=[item(p0, 2)], id_user_vehicle=driver),
+        create_order(
+            items=[item(p1, 1)], id_user_vehicle=driver, payment_method="TRANSFER"
+        ),
+        create_order(
+            items=[item(p2, 1)],
+            id_user_vehicle=driver,
+            invoice_type="ELECTRONIC",
+            payment_method="CREDIT",
+        ),
+        create_order(items=[item(p0, 1)]),
+        create_order(items=[item(p1, 1)], invoice_type="ELECTRONIC"),
+    ]
+    for order in orders:
+        _dispatch(client, order)
+    return orders
+
+
+def test_el_excel_tiene_las_3_hojas(client, mixed_day):
+    workbook = _workbook(_export(client))
+
+    assert workbook.sheetnames == [
+        "Consolidado POS",
+        "Otras facturas",
+        "Cuadre de caja",
+    ]
+
+
+def test_hoja_otras_facturas_pedido_por_pedido(client, mixed_day):
+    sheet = _workbook(_export(client))["Otras facturas"]
+    header, *rows = _rows(sheet)
+
+    assert header[3:8] == (
+        "PO",
+        "Tipo factura",
+        "Método pago",
+        "Cliente factura",
+        "Cliente",
+    )
+    lines = [r for r in rows if r[0] is not None]  # renglones de producto
+    # Vendedor 09 (FE efectivo) va antes que el 99; dentro del 99: POS transf., FE crédito
+    assert [(r[1], r[4], r[5]) for r in lines] == [
+        (9, "Electrónica", "Efectivo"),
+        (99, "POS", "Transferencia"),
+        (99, "Electrónica", "Crédito"),
+    ]
+    pos_transfer = lines[1]
+    assert pos_transfer[6:8] == ("CUANTÍAS MENORES", "CLIENTE REGISTRADO")
+    fe_credit = lines[2]
+    assert fe_credit[6:8] == ("CLIENTE REGISTRADO", "CLIENTE REGISTRADO")
+    assert rows[-1][9] == "TOTAL OTRAS FACTURAS"
+    assert rows[-1][12] == 20000  # 6000 + 6000 + 8000
+
+
+def test_cuadre_de_caja_y_cruce_entre_hojas(client, mixed_day):
+    workbook = _workbook(_export(client))
+    _, *consolidated = _rows(workbook["Consolidado POS"])
+    _, *others = _rows(workbook["Otras facturas"])
+    header, *cash = _rows(workbook["Cuadre de caja"])
+
+    assert header == (
+        "Cód. vendedor",
+        "Vendedor",
+        "Pedidos",
+        "Efectivo POS",
+        "Efectivo FE",
+        "Transferencia POS",
+        "Transferencia FE",
+        "Crédito POS",
+        "Crédito FE",
+        "Total vendido",
+        "Efectivo a recibir",
+    )
+    by_seller = {row[0]: row for row in cash[:2]}
+    assert by_seller[9] == (9, "Hielo Foca", 2, 3000, 6000, 0, 0, 0, 0, 9000, 9000)
+    assert by_seller[99] == (
+        99,
+        "Carlos Conductor",
+        3,
+        6000,
+        0,
+        6000,
+        0,
+        0,
+        8000,
+        20000,
+        6000,
+    )
+    total = cash[2]
+    assert total[1] == "TOTAL"
+    assert total[2:] == (5, 9000, 6000, 6000, 0, 0, 8000, 29000, 15000)
+
+    # Cruces: hoja 3 = hoja 1 (efectivo POS) + hoja 2 (lo demás), por vendedor
+    consolidated_by_seller = {
+        r[2]: r[7] for r in consolidated if r[4] == "Total vendedor"
+    }
+    others_by_seller = {r[2]: r[12] for r in others if r[9] == "Total vendedor"}
+    for row in cash[:2]:
+        name, pos_cash, sold = row[1], row[3], row[9]
+        assert consolidated_by_seller.get(name, 0) == pos_cash
+        assert others_by_seller.get(name, 0) == sold - pos_cash
+    assert consolidated[-1][7] + others[-1][12] == total[9]
+
+
+def test_cuadre_lista_los_despachados_cancelados_sin_sumarlos(
+    client, create_order, db, data
+):
+    driver = data.user_vehicle.id_user_vehicle
+    kept = create_order(id_user_vehicle=driver)  # 6000
+    returned = create_order(id_user_vehicle=driver, payment_method="TRANSFER")
+    for order in (kept, returned):
+        _dispatch(client, order)
+    cancelled = mark_cancelled(db, returned["id_order"])
+    cancelled.cancel_note = "No estaba"
+    cancelled.cancelled_at = datetime(2026, 11, 11, 20, 15, tzinfo=UTC)  # 15:15 Bogotá
+    cancelled.id_user_canceller = data.taker.id_user
+    db.commit()
+
+    rows = _rows(_workbook(_export(client))["Cuadre de caja"])
+
+    total = next(r for r in rows if r[1] == "TOTAL")
+    assert total[9] == 6000  # el cancelado no suma
+    title = rows.index(("Pedidos despachados y cancelados (no suman)",) + (None,) * 10)
+    header, listed = rows[title + 1], rows[title + 2]
+    assert header[:3] == ("PO", "Vendedor", "Cliente")
+    assert listed[:10] == (
+        returned["purchase_order"],
+        "99 - Carlos Conductor",
+        "CLIENTE REGISTRADO",
+        "Transferencia",
+        "POS",
+        6000,
+        "Otro",
+        "No estaba",
+        "Ana Gestora",
+        "15:15",
+    )
+
+
+def test_cuadre_sin_cancelados(client, create_order, data):
+    _dispatch(client, create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle))
+
+    rows = _rows(_workbook(_export(client))["Cuadre de caja"])
+
+    assert rows[-1][0] == "Sin pedidos cancelados después del despacho"
+
+
+# --- Cambios finales B7 (paso 3): días sin cerrar con la misma huella ---------------------
+
+
+def _unclosed(db) -> list[date]:
+    return shift_closure_service.unclosed_days(db, today_bogota().replace(day=1))
+
+
+def test_dia_sin_exportar_queda_sin_cerrar(client, create_order, db, data):
+    _dispatch(client, create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle))
+
+    assert _unclosed(db) == [today_bogota()]
+
+    _export(client)
+    assert _unclosed(db) == []
+
+
+def test_cambio_de_pago_tras_exportar_reabre_el_dia(client, create_order, db, data):
+    order = create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle)
+    _dispatch(client, order)
+    _export(client)
+
+    client.patch(
+        f"{API}/orders/{order['id_order']}", json={"payment_method": "CREDIT"}
+    )
+
+    assert _unclosed(db) == [today_bogota()]  # mismos totales, distinta huella
+
+
+def test_cierre_de_un_vendedor_que_ya_no_tiene_pedidos_reabre_el_dia(
+    client, create_order, db, data, default_seller
+):
+    order = create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle)
+    _dispatch(client, order)
+    _export(client)
+    db.get(Order, order["id_order"]).id_user_vehicle = default_seller.id_user_vehicle
+    db.commit()
+
+    assert _unclosed(db) == [today_bogota()]
+
+
+def test_cierre_anterior_a_la_huella_se_compara_por_totales(
+    client, create_order, db, data
+):
+    driver = data.user_vehicle.id_user_vehicle
+    _dispatch(client, create_order(id_user_vehicle=driver))  # 6000
+    db.add(
+        ShiftClosure(
+            closure_date=today_bogota(),
+            id_user_vehicle=driver,
+            total_orders=1,
+            total_sales=Decimal("6000"),
+            exported_siigo=True,
+            exported_at=datetime.now(UTC),
+            signature=None,
+        )
+    )
+    db.commit()
+
+    assert _unclosed(db) == []

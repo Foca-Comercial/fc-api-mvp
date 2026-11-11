@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
@@ -19,6 +20,8 @@ from app.models.securityModule.person import Person
 from app.models.securityModule.user import User
 from app.models.securityModule.user_role import UserRole
 from app.repositories.base_repository import BaseRepository
+from app.repositories.pagination import order_clause
+from app.schemas.common.page_schema import PageParams
 from app.schemas.coreModule.order_history_schema import OrderHistoryFilters
 from app.schemas.coreModule.order_schema import OrderCreate, OrderUpdate
 from app.utils.enums.order_state import OrderState
@@ -131,6 +134,10 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             conditions.append(Order.id_route == filters.id_route)  # type: ignore
         if filters.id_user_vehicle is not None:
             conditions.append(Order.id_user_vehicle == filters.id_user_vehicle)  # type: ignore
+        if filters.payment_method is not None:
+            conditions.append(Order.payment_method == filters.payment_method)  # type: ignore
+        if filters.invoice_type is not None:
+            conditions.append(Order.invoice_type == filters.invoice_type)  # type: ignore
         if filters.search:
             term = filters.search.strip()
             conditions.append(
@@ -161,7 +168,7 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
 
     # Una página del histórico, del más reciente al más antiguo
     def get_history_page(
-        self, db: Session, filters: OrderHistoryFilters, *, offset: int, limit: int
+        self, db: Session, filters: OrderHistoryFilters, params: PageParams
     ) -> list[tuple]:
         # Productos agregados por pedido en una subconsulta: la paginación se
         # hace sobre pedidos, no sobre renglones de detalle.
@@ -191,6 +198,8 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
                 UserVehicle.code.label("driver_code"),
                 (Person.name + " " + Person.last_name).label("driver_name"),
                 Order.state,
+                Order.payment_method,
+                Order.invoice_type,
             )
             .join(Client, Client.id_client == Order.id_client)
             .join(Neighborhood, Neighborhood.id_neighborhood == Client.id_neighborhood)
@@ -204,13 +213,30 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .outerjoin(User, User.id_user == UserRole.id_user)
             .outerjoin(Person, Person.id_person == User.id_person)
             .where(*self._history_conditions(filters))
+            # Por defecto del más antiguo al más nuevo (día de entrega y hora en
+            # que se tomó); sort_dir=desc lo invierte
             .order_by(
-                Order.delivery_date.desc(),
-                Order.creation_datetime.desc(),
-                Order.id_order.desc(),
+                *order_clause(
+                    params,
+                    {
+                        "date": (Order.delivery_date, Order.creation_datetime),
+                        "purchase_order": (Order.delivery_date, Order.purchase_order),
+                        "client_name": Client.name,
+                        "zone_name": Zone.name,
+                        "route_name": Route.name,
+                        "total_quantity": "total_quantity",
+                        "total": Order.order_total,
+                        "driver_name": (Person.name, Person.last_name),
+                        "state": Order.state,
+                        "payment_method": Order.payment_method,
+                        "invoice_type": Order.invoice_type,
+                    },
+                    default=[Order.delivery_date, Order.creation_datetime],
+                    tiebreak=Order.id_order,
+                )
             )
-            .offset(offset)
-            .limit(limit)
+            .offset(params.offset)
+            .limit(params.page_size)
         )
         return list(db.execute(stmt).all())
 
@@ -247,6 +273,10 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
                 OrderDetail.unit_price,
                 OrderDetail.subtotal,
                 Order.order_total,
+                Order.payment_method,
+                Order.invoice_type,
+                Order.observations,
+                Order.cancel_reason,
             )
             .join(OrderDetail, OrderDetail.id_order == Order.id_order)
             .join(Product, Product.id_product == OrderDetail.id_product)
@@ -287,46 +317,94 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
         )
         return {state: count for state, count in db.execute(stmt).all()}
 
-    # Pedidos facturables del día por vendedor: {id_user_vehicle | None: cantidad}.
-    # La clave None agrupa los pedidos sin conductor asignado.
-    def count_billable_by_seller(self, db: Session, day: date) -> dict[int | None, int]:
-        stmt = (
-            select(Order.id_user_vehicle, func.count(Order.id_order))
-            .where(
-                Order.delivery_date == day,
-                Order.state.in_(BILLABLE_STATES),
-            )
-            .group_by(Order.id_user_vehicle)
-        )
-        return {id_uv: count for id_uv, count in db.execute(stmt).all()}
-
-    # Renglones facturables del día agrupados por (vendedor, producto, precio).
-    # Un mismo producto vendido a precios distintos queda en renglones separados.
-    def get_billable_lines(self, db: Session, day: date) -> list[tuple]:
+    # Pedidos facturables del día con sus renglones: una fila por renglón, en orden
+    # de pedido. Es la única fuente del cierre: el consolidado, las otras
+    # facturas, el cuadre, el resumen y la huella se arman con estas mismas filas.
+    def get_billable_order_lines(self, db: Session, day: date) -> list[Any]:
         stmt = (
             select(
+                Order.id_order,
+                Order.purchase_order,
+                Order.state,
+                Order.payment_method,
+                Order.invoice_type,
+                Order.order_total,
                 Order.id_user_vehicle,
+                Client.name.label("client_name"),
+                OrderDetail.id_order_detail,
                 Product.id_product,
                 Product.code.label("product_code"),
                 Product.name.label("product_name"),
+                OrderDetail.cant,
                 OrderDetail.unit_price,
-                func.sum(OrderDetail.cant).label("quantity"),
-                func.sum(OrderDetail.subtotal).label("subtotal"),
+                OrderDetail.subtotal,
             )
+            .join(Client, Client.id_client == Order.id_client)
             .join(OrderDetail, OrderDetail.id_order == Order.id_order)
             .join(Product, Product.id_product == OrderDetail.id_product)
             .where(
                 Order.delivery_date == day,
                 Order.state.in_(BILLABLE_STATES),
             )
-            .group_by(
-                Order.id_user_vehicle,
-                Product.id_product,
-                Product.code,
-                Product.name,
-                OrderDetail.unit_price,
+            .order_by(Order.id_order, OrderDetail.id_order_detail)
+        )
+        return list(db.execute(stmt).all())
+
+    # Días del mes (por día de entrega) que tienen pedidos facturables
+    def get_billable_days(self, db: Session, month: date) -> list[date]:
+        start, end = bogota_month_range(month.year, month.month)
+        stmt = (
+            select(Order.delivery_date)
+            .where(
+                Order.delivery_date >= start.date(),
+                Order.delivery_date < end.date(),
+                Order.state.in_(BILLABLE_STATES),
             )
-            .order_by(Product.code, OrderDetail.unit_price)
+            .distinct()
+            .order_by(Order.delivery_date)
+        )
+        return list(db.scalars(stmt).all())
+
+    # Pedidos del día que se despacharon y después se cancelaron (devoluciones):
+    # listado informativo del cierre, no suman.
+    def get_cancelled_after_dispatch(self, db: Session, day: date) -> list[Any]:
+        Canceller = aliased(User)
+        CancellerPerson = aliased(Person)
+        stmt = (
+            select(
+                Order.id_order,
+                Order.purchase_order,
+                Order.id_user_vehicle,
+                UserVehicle.code.label("driver_code"),
+                (Person.name + " " + Person.last_name).label("driver_name"),
+                Client.name.label("client_name"),
+                Order.payment_method,
+                Order.invoice_type,
+                Order.order_total,
+                Order.cancel_reason,
+                Order.cancel_note,
+                Order.cancelled_at,
+                (CancellerPerson.name + " " + CancellerPerson.last_name).label(
+                    "canceller_name"
+                ),
+            )
+            .join(Client, Client.id_client == Order.id_client)
+            .outerjoin(
+                UserVehicle, UserVehicle.id_user_vehicle == Order.id_user_vehicle
+            )
+            .outerjoin(UserRole, UserRole.id_user_role == UserVehicle.id_user_role)
+            .outerjoin(User, User.id_user == UserRole.id_user)
+            .outerjoin(Person, Person.id_person == User.id_person)
+            .outerjoin(Canceller, Canceller.id_user == Order.id_user_canceller)
+            .outerjoin(
+                CancellerPerson, CancellerPerson.id_person == Canceller.id_person
+            )
+            .where(
+                Order.delivery_date == day,
+                Order.state == OrderState.CANCELLED,
+                Order.dispatch_time.is_not(None),
+            )
+            .order_by(Order.purchase_order, Order.id_order)
         )
         return list(db.execute(stmt).all())
 
@@ -343,6 +421,12 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
                 .joinedload(UserVehicle.user_role)
                 .joinedload(UserRole.user)
                 .joinedload(User.person),
+                # Auditoría: quién lo tomó, quién editó los productos y quién lo
+                # canceló (SQLAlchemy usa un alias distinto para cada usuario)
+                joinedload(Order.user_taker).joinedload(User.person),
+                joinedload(Order.user_items_updater).joinedload(User.person),
+                joinedload(Order.user_canceller).joinedload(User.person),
+                joinedload(Order.route),
             )
             .where(Order.id_order == id_order)
         )

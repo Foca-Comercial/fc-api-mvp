@@ -12,7 +12,7 @@ from app.models.parametersModule.neighborhood import Neighborhood
 from app.models.parametersModule.route import Route
 from app.models.parametersModule.zone import Zone
 from app.repositories.base_repository import BaseRepository
-from app.repositories.pagination import paginate
+from app.repositories.pagination import order_clause, paginate
 from app.schemas.common.page_schema import PageParams
 from app.schemas.parametersModule.route_schema import (
     RouteAdminFilters,
@@ -170,6 +170,7 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
                 Client.name,
                 Client.phone,
                 Client.address,
+                Client.requires_electronic_invoice,
                 Neighborhood.name.label("neighborhood_name"),
                 Zone.name.label("zone_name"),
             )
@@ -263,7 +264,19 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
         stmt = (
             self._admin_select()
             .where(*conditions)
-            .order_by(Route.name, Route.id_route)
+            .order_by(
+                *order_clause(
+                    params,
+                    {
+                        "name": Route.name,
+                        "departure_time": Route.departure_time,
+                        "active": Route.active,
+                        "clients_count": "clients_count",
+                    },
+                    default=[Route.name],
+                    tiebreak=Route.id_route,
+                )
+            )
         )
         count_stmt = select(Route.id_route).where(*conditions)
         return paginate(db, stmt, params, count_stmt=count_stmt)

@@ -9,7 +9,7 @@ from app.models.coreModule.special_customer_price import SpecialCustomerPrice
 from app.models.parametersModule.neighborhood import Neighborhood
 from app.models.parametersModule.zone import Zone
 from app.repositories.base_repository import BaseRepository
-from app.repositories.pagination import paginate
+from app.repositories.pagination import order_clause, paginate
 from app.schemas.common.page_schema import PageParams
 from app.schemas.coreModule.client_schema import (
     ClientAdminFilters,
@@ -68,6 +68,10 @@ class RepositoryClient(BaseRepository[Client, ClientCreate, ClientUpdate]):
             conditions.append(Client.active.is_(filters.active))
         if filters.id_zone is not None:
             conditions.append(Neighborhood.id_zone == filters.id_zone)
+        if filters.electronic_invoice is not None:
+            conditions.append(
+                Client.requires_electronic_invoice.is_(filters.electronic_invoice)
+            )
         return conditions
 
     @staticmethod
@@ -97,6 +101,7 @@ class RepositoryClient(BaseRepository[Client, ClientCreate, ClientUpdate]):
                 Zone.id_zone,
                 Zone.name.label("zone_name"),
                 Client.active,
+                Client.requires_electronic_invoice,
                 special_prices.label("special_prices_count"),
                 routes.label("routes_count"),
             )
@@ -112,7 +117,23 @@ class RepositoryClient(BaseRepository[Client, ClientCreate, ClientUpdate]):
         stmt = (
             self._admin_select()
             .where(*conditions)
-            .order_by(Client.name, Client.id_client)
+            .order_by(
+                *order_clause(
+                    params,
+                    {
+                        "name": Client.name,
+                        "phone": Client.phone,
+                        "neighborhood_name": Neighborhood.name,
+                        "zone_name": Zone.name,
+                        "active": Client.active,
+                        "requires_electronic_invoice": Client.requires_electronic_invoice,
+                        "special_prices_count": "special_prices_count",
+                        "routes_count": "routes_count",
+                    },
+                    default=[Client.name],
+                    tiebreak=Client.id_client,
+                )
+            )
         )
         # El conteo no necesita la zona ni las subconsultas
         count_stmt = (

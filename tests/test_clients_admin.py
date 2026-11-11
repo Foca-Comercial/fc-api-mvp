@@ -243,3 +243,55 @@ def test_el_gestor_no_accede_al_panel_de_clientes(client, data):
     assert client.post(URL, json=body).status_code == 403
     edit = client.patch(f"{URL}/{data.client.id_client}", json=body)
     assert edit.status_code == 403
+
+
+# --- Factura electrónica (cambios finales B2) -------------------------------------------
+
+
+def test_crear_cliente_con_factura_electronica(admin, data):
+    response = admin.post(
+        URL,
+        json={
+            "name": "empresa xyz",
+            "id_neighborhood": data.neighborhood.id_neighborhood,
+            "requires_electronic_invoice": True,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["requires_electronic_invoice"] is True
+
+
+def test_marcar_y_filtrar_clientes_con_factura_electronica(admin, db, data):
+    plain = _client(db, data, "SIN FACTURA ELECTRONICA")
+
+    marked = admin.patch(
+        f"{URL}/{data.client.id_client}", json={"requires_electronic_invoice": True}
+    )
+    electronic = _ids(admin.get(f"{URL}?electronic_invoice=true"))
+    not_electronic = _ids(admin.get(f"{URL}?electronic_invoice=false"))
+
+    assert marked.status_code == 200, marked.text
+    assert marked.json()["requires_electronic_invoice"] is True
+    assert data.client.id_client in electronic
+    assert plain.id_client not in electronic
+    assert plain.id_client in not_electronic
+
+
+def test_la_marca_de_factura_electronica_no_admite_null(admin, data):
+    response = admin.patch(
+        f"{URL}/{data.client.id_client}", json={"requires_electronic_invoice": None}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "REQUIRED_FIELD"
+
+
+def test_la_busqueda_del_pedido_trae_la_marca(client, db, data):
+    data.client.requires_electronic_invoice = True
+    db.commit()
+
+    rows = client.get(f"{API}/clients/search?name=registrado").json()
+
+    row = next(r for r in rows if r["id_client"] == data.client.id_client)
+    assert row["requires_electronic_invoice"] is True
