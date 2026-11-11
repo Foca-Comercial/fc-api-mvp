@@ -7,6 +7,7 @@ from app.api.dependencies import CurrentUser, get_current_user
 from app.api.routers.auth.secured_router import SecuredRouter
 from app.core.timezone import today_bogota
 from app.db.database import get_db
+from app.schemas.common.page_schema import SortDirection
 from app.schemas.coreModule.order_history_schema import OrderHistoryPage
 from app.schemas.coreModule.order_schema import (
     OrderCreateExistingClient,
@@ -26,7 +27,9 @@ from app.schemas.coreModule.route_order_schema import (
 )
 from app.services.coreModule.order_service import order_service
 from app.services.pdf.pdf_service import pdf_service
+from app.utils.enums.invoice_type import InvoiceType
 from app.utils.enums.order_state import OrderState
+from app.utils.enums.payment_method import PaymentMethod
 from app.utils.exceptions.business_exceptions import BusinessValidationError
 
 router = SecuredRouter(prefix="/orders", tags=["Orders"])
@@ -78,8 +81,21 @@ def get_order_history(
     search: str | None = Query(
         None, min_length=1, description="Nombre del cliente o N.° de pedido exacto"
     ),
+    payment_method: PaymentMethod | None = None,
+    invoice_type: InvoiceType | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    sort_by: str | None = Query(
+        None,
+        max_length=40,
+        pattern=r"^[a-z_]+$",
+        description="date (por defecto), purchase_order, client_name, zone_name, "
+        "route_name, total_quantity, total, driver_name, state, payment_method, "
+        "invoice_type",
+    ),
+    sort_dir: SortDirection = Query(
+        "asc", description="asc (por defecto: del más antiguo al más nuevo) o desc"
+    ),
     db: Session = Depends(get_db),  # noqa: B008
 ):
     return order_service.get_history(
@@ -92,6 +108,10 @@ def get_order_history(
         search=search,
         page=page,
         page_size=page_size,
+        payment_method=payment_method,
+        invoice_type=invoice_type,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
 
 

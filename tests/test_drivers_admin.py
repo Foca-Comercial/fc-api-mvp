@@ -368,3 +368,17 @@ def test_el_gestor_no_accede_al_panel_de_domiciliarios(client, data):
     assert client.get(URL).status_code == 403
     assert client.post(URL, json={"name": "A", "last_name": "B"}).status_code == 403
     assert client.get(f"{URL}/next-code").status_code == 403
+
+
+# --- Ordenamiento (cambios finales B8) --------------------------------------------------
+
+
+def test_domiciliarios_por_nombre_en_ambas_direcciones(admin, seller_role):
+    _driver(admin, name="Zoe", last_name="Orden")
+    _driver(admin, name="Abel", last_name="Orden")
+
+    asc = admin.get(f"{URL}?search=orden&sort_by=name").json()["items"]
+    desc = admin.get(f"{URL}?search=orden&sort_by=name&sort_dir=desc").json()["items"]
+
+    assert [d["name"] for d in asc] == ["ABEL", "ZOE"]
+    assert [d["name"] for d in desc] == ["ZOE", "ABEL"]

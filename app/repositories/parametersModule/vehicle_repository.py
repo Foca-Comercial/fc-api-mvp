@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.coreModule.user_vehicle import UserVehicle
 from app.models.parametersModule.vehicle import Vehicle
 from app.repositories.base_repository import BaseRepository
-from app.repositories.pagination import paginate
+from app.repositories.pagination import order_clause, paginate
 from app.schemas.common.page_schema import PageParams
 from app.schemas.parametersModule.vehicle_schema import (
     VehicleAdminFilters,
@@ -69,7 +69,18 @@ class RepositoryVehicle(BaseRepository[Vehicle, VehicleCreate, VehicleUpdate]):
         stmt = (
             self._admin_select()
             .where(*conditions)
-            .order_by(Vehicle.name, Vehicle.id_vehicle)
+            .order_by(
+                *order_clause(
+                    params,
+                    {
+                        "name": Vehicle.name,
+                        "active": Vehicle.active,
+                        "assignments_count": "assignments_count",
+                    },
+                    default=[Vehicle.name],
+                    tiebreak=Vehicle.id_vehicle,
+                )
+            )
         )
         count_stmt = select(Vehicle.id_vehicle).where(*conditions)
         return paginate(db, stmt, params, count_stmt=count_stmt)

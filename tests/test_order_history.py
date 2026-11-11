@@ -87,18 +87,75 @@ def test_filtro_por_rango_de_fechas_incluye_ambos_extremos(client, create_order,
     assert set(ids) == {orders[0]["id_order"], orders[1]["id_order"]}
 
 
-def test_ordenado_del_mas_reciente_al_mas_antiguo_y_paginado(client, create_order, db):
+def test_ordenado_del_mas_antiguo_al_mas_nuevo_y_paginado(client, create_order, db):
     orders = [create_order() for _ in range(3)]
-    for hour, order in zip((8, 9, 10), orders, strict=True):
+    for hour, order in zip((10, 8, 9), orders, strict=True):
         _move(db, order, today_bogota(), hour=hour)
 
     page_1 = client.get(f"{URL}?page_size=2").json()
     page_2 = client.get(f"{URL}?page_size=2&page=2").json()
 
-    expected = [o["id_order"] for o in reversed(orders)]
+    expected = [orders[1]["id_order"], orders[2]["id_order"], orders[0]["id_order"]]
     assert [r["id_order"] for r in page_1["items"]] == expected[:2]
     assert [r["id_order"] for r in page_2["items"]] == expected[2:]
     assert (page_1["total"], page_1["pages"]) == (3, 2)
+
+
+def test_sort_dir_desc_vuelve_al_mas_reciente_primero(client, create_order, db):
+    older, newer = create_order(), create_order()
+    _move(db, older, today_bogota() - timedelta(days=1))
+    _move(db, newer, today_bogota())
+
+    assert _ids(client.get(URL))[:2] == [older["id_order"], newer["id_order"]]
+    assert _ids(client.get(f"{URL}?sort_dir=desc"))[:2] == [
+        newer["id_order"],
+        older["id_order"],
+    ]
+
+
+def test_ordenar_por_cliente_y_total(client, create_order, data):
+    small = create_order(items=[item(data.products[0], 1)])  # 3000
+    big = create_order(items=[item(data.products[2], 1)])  # 8000
+    other = client.post(
+        f"{API}/orders/new-client",
+        json={
+            "client": {
+                "name": "aaa primero",
+                "id_neighborhood": data.neighborhood.id_neighborhood,
+            },
+            "items": [item(data.products[1], 1)],  # 6000
+        },
+    ).json()
+
+    by_client = _ids(client.get(f"{URL}?sort_by=client_name"))
+    by_total = _ids(client.get(f"{URL}?sort_by=total&sort_dir=desc"))
+
+    assert by_client[0] == other["id_order"]  # "AAA PRIMERO" antes de "CLIENTE ..."
+    assert by_total == [big["id_order"], other["id_order"], small["id_order"]]
+
+
+def test_campo_de_orden_invalido(client):
+    unknown = client.get(f"{URL}?sort_by=password")
+    malformed = client.get(f"{URL}?sort_by=Client.name")
+
+    assert unknown.status_code == 422
+    assert unknown.json()["code"] == "INVALID_SORT_FIELD"
+    assert "client_name" in unknown.json()["detail"]
+    assert malformed.status_code == 422  # el patrón solo admite a-z y _
+
+
+def test_filas_traen_pago_y_factura_y_se_filtran(client, create_order):
+    cash = create_order()
+    transfer = create_order(payment_method="TRANSFER", invoice_type="ELECTRONIC")
+
+    rows = {r["id_order"]: r for r in client.get(URL).json()["items"]}
+    only_transfer = _ids(client.get(f"{URL}?payment_method=TRANSFER"))
+    only_electronic = _ids(client.get(f"{URL}?invoice_type=ELECTRONIC"))
+
+    cash_row = rows[cash["id_order"]]
+    assert (cash_row["payment_method"], cash_row["invoice_type"]) == ("CASH", "POS")
+    assert only_transfer == [transfer["id_order"]]
+    assert only_electronic == [transfer["id_order"]]
 
 
 def test_filtros_por_estado_ruta_y_conductor(client, create_order, db, data):

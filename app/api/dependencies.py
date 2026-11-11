@@ -8,7 +8,12 @@ from app.core.security import decode_access_token
 from app.db.database import get_db
 from app.models.securityModule.user import User
 from app.repositories.securityModule.user_repository import user_repository
-from app.schemas.common.page_schema import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PageParams
+from app.schemas.common.page_schema import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_SIZE,
+    PageParams,
+    SortDirection,
+)
 from app.utils.exceptions.business_exceptions import ForbiddenError, UnauthorizedError
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -64,9 +69,18 @@ def get_page_params(
     page_size: int = Query(
         DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE, description="Registros por página"
     ),
+    sort_by: str | None = Query(
+        None,
+        max_length=40,
+        pattern=r"^[a-z_]+$",
+        description="Campo por el que ordenar (cada listado define los suyos)",
+    ),
+    sort_dir: SortDirection = Query("asc", description="asc o desc"),  # noqa: B008
 ) -> PageParams:
-    """Página pedida en los listados paginados en el servidor:
+    """Página y orden pedidos en los listados paginados en el servidor:
 
     def list_x(params: PageParams = Depends(get_page_params), ...): ...
     """
-    return PageParams(page=page, page_size=page_size)
+    return PageParams(
+        page=page, page_size=page_size, sort_by=sort_by, sort_dir=sort_dir
+    )

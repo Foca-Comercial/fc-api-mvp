@@ -19,7 +19,7 @@ from app.models.securityModule.person import Person
 from app.models.securityModule.role import Role
 from app.models.securityModule.user import User
 from app.models.securityModule.user_role import UserRole
-from app.repositories.pagination import paginate
+from app.repositories.pagination import order_clause, paginate
 from app.schemas.common.page_schema import PageParams
 from app.schemas.coreModule.driver_schema import DriverAdminFilters
 
@@ -121,7 +121,20 @@ class RepositoryDriver:
         stmt = (
             self._select()
             .where(*conditions)
-            .order_by(Person.name, Person.last_name, User.id_user)
+            .order_by(
+                *order_clause(
+                    params,
+                    {
+                        "name": (Person.name, Person.last_name),
+                        "phone": Person.phone,
+                        "username": User.username,
+                        "active": User.active,
+                        "assignments_count": "assignments_count",
+                    },
+                    default=[Person.name, Person.last_name],
+                    tiebreak=User.id_user,
+                )
+            )
         )
         count_stmt = (
             select(UserRole.id_user_role)

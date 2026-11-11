@@ -19,6 +19,8 @@ from app.models.securityModule.person import Person
 from app.models.securityModule.user import User
 from app.models.securityModule.user_role import UserRole
 from app.repositories.base_repository import BaseRepository
+from app.repositories.pagination import order_clause
+from app.schemas.common.page_schema import PageParams
 from app.schemas.coreModule.order_history_schema import OrderHistoryFilters
 from app.schemas.coreModule.order_schema import OrderCreate, OrderUpdate
 from app.utils.enums.order_state import OrderState
@@ -131,6 +133,10 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             conditions.append(Order.id_route == filters.id_route)  # type: ignore
         if filters.id_user_vehicle is not None:
             conditions.append(Order.id_user_vehicle == filters.id_user_vehicle)  # type: ignore
+        if filters.payment_method is not None:
+            conditions.append(Order.payment_method == filters.payment_method)  # type: ignore
+        if filters.invoice_type is not None:
+            conditions.append(Order.invoice_type == filters.invoice_type)  # type: ignore
         if filters.search:
             term = filters.search.strip()
             conditions.append(
@@ -161,7 +167,7 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
 
     # Una página del histórico, del más reciente al más antiguo
     def get_history_page(
-        self, db: Session, filters: OrderHistoryFilters, *, offset: int, limit: int
+        self, db: Session, filters: OrderHistoryFilters, params: PageParams
     ) -> list[tuple]:
         # Productos agregados por pedido en una subconsulta: la paginación se
         # hace sobre pedidos, no sobre renglones de detalle.
@@ -191,6 +197,8 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
                 UserVehicle.code.label("driver_code"),
                 (Person.name + " " + Person.last_name).label("driver_name"),
                 Order.state,
+                Order.payment_method,
+                Order.invoice_type,
             )
             .join(Client, Client.id_client == Order.id_client)
             .join(Neighborhood, Neighborhood.id_neighborhood == Client.id_neighborhood)
@@ -204,13 +212,30 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .outerjoin(User, User.id_user == UserRole.id_user)
             .outerjoin(Person, Person.id_person == User.id_person)
             .where(*self._history_conditions(filters))
+            # Por defecto del más antiguo al más nuevo (día de entrega y hora en
+            # que se tomó); sort_dir=desc lo invierte
             .order_by(
-                Order.delivery_date.desc(),
-                Order.creation_datetime.desc(),
-                Order.id_order.desc(),
+                *order_clause(
+                    params,
+                    {
+                        "date": (Order.delivery_date, Order.creation_datetime),
+                        "purchase_order": (Order.delivery_date, Order.purchase_order),
+                        "client_name": Client.name,
+                        "zone_name": Zone.name,
+                        "route_name": Route.name,
+                        "total_quantity": "total_quantity",
+                        "total": Order.order_total,
+                        "driver_name": (Person.name, Person.last_name),
+                        "state": Order.state,
+                        "payment_method": Order.payment_method,
+                        "invoice_type": Order.invoice_type,
+                    },
+                    default=[Order.delivery_date, Order.creation_datetime],
+                    tiebreak=Order.id_order,
+                )
             )
-            .offset(offset)
-            .limit(limit)
+            .offset(params.offset)
+            .limit(params.page_size)
         )
         return list(db.execute(stmt).all())
 

@@ -18,6 +18,7 @@ from app.repositories.parametersModule.neighborhood_repository import (
     neighborhood_repository,
 )
 from app.repositories.parametersModule.route_repository import route_repository
+from app.schemas.common.page_schema import PageParams, SortDirection
 from app.schemas.coreModule.order_history_schema import (
     OrderHistoryFilters,
     OrderHistoryPage,
@@ -112,6 +113,10 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         search: str | None,
         page: int,
         page_size: int,
+        payment_method: PaymentMethod | None = None,
+        invoice_type: InvoiceType | None = None,
+        sort_by: str | None = None,
+        sort_dir: SortDirection = "asc",
     ) -> OrderHistoryPage:
         today = today_bogota()
         # Por defecto: desde el 1 del mes anterior (lo que retiene la BD) hasta hoy
@@ -124,6 +129,8 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             id_route=id_route,
             id_user_vehicle=id_user_vehicle,
             search=search.strip() if search and search.strip() else None,
+            payment_method=payment_method,
+            invoice_type=invoice_type,
         )
         if filters.date_from > filters.date_to:
             raise BusinessValidationError(
@@ -133,9 +140,10 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             )
 
         total, total_sales = order_repository.get_history_totals(db, filters)
-        rows = order_repository.get_history_page(
-            db, filters, offset=(page - 1) * page_size, limit=page_size
+        params = PageParams(
+            page=page, page_size=page_size, sort_by=sort_by, sort_dir=sort_dir
         )
+        rows = order_repository.get_history_page(db, filters, params)
         return OrderHistoryPage(
             date_from=filters.date_from,
             date_to=filters.date_to,
