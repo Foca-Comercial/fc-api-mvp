@@ -17,8 +17,10 @@ cuadren siempre entre sí:
 
 import hashlib
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal
 
+from app.utils.enums.cancel_reason import CancelReason
 from app.utils.enums.invoice_type import InvoiceType
 from app.utils.enums.order_state import OrderState
 from app.utils.enums.payment_method import PaymentMethod
@@ -70,6 +72,23 @@ def category_of(invoice_type: InvoiceType, payment_method: PaymentMethod) -> Cat
     return _BY_TYPES[(invoice_type, payment_method)]
 
 
+# Etiquetas en español para el Excel
+PAYMENT_LABELS = {
+    PaymentMethod.CASH: "Efectivo",
+    PaymentMethod.TRANSFER: "Transferencia",
+    PaymentMethod.CREDIT: "Crédito",
+}
+INVOICE_LABELS = {InvoiceType.POS: "POS", InvoiceType.ELECTRONIC: "Electrónica"}
+CANCEL_REASON_LABELS = {
+    CancelReason.WRONG_BILLING: "Mal facturado",
+    CancelReason.CLIENT_ABSENT: "Cliente no estaba",
+    CancelReason.DAMAGED_PRODUCT: "Producto dañado",
+    CancelReason.OTHER: "Otro",
+}
+# Cliente con el que se factura un POS en Siigo (el mismo del comprobante)
+POS_INVOICE_CLIENT = "CUANTÍAS MENORES"
+
+
 def _money(value: Decimal) -> str:
     """Decimal normalizado a 2 decimales (3000 y 3000.00 dan la misma huella)."""
     return f"{Decimal(value):.2f}"
@@ -102,6 +121,13 @@ class ClosureOrder:
     @property
     def category(self) -> Category:
         return category_of(self.invoice_type, self.payment_method)
+
+    @property
+    def invoice_client(self) -> str:
+        """A quién se factura en Siigo: POS -> cuantías menores; FE -> el cliente."""
+        if self.invoice_type == InvoiceType.POS:
+            return POS_INVOICE_CLIENT
+        return self.client_name
 
     @property
     def total(self) -> Decimal:
@@ -246,3 +272,20 @@ class SellerClosure:
     def signature(self) -> str:
         payload = "\n".join(sorted(o.fingerprint() for o in self.orders))
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Despachados y luego cancelados (listado informativo, no suma)
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class CancelledOrder:
+    purchase_order: str
+    seller: str  # "28 - Carlos Conductor" o "Sin conductor"
+    client_name: str
+    payment_method: PaymentMethod
+    invoice_type: InvoiceType
+    total: Decimal
+    cancel_reason: CancelReason
+    cancel_note: str | None
+    canceller_name: str | None
+    cancelled_at: datetime | None  # ya en hora de Bogotá

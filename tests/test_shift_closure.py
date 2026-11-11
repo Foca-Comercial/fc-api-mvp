@@ -263,7 +263,7 @@ def test_exporta_excel_con_un_renglon_por_vendedor_producto_y_precio(
         (99, "Carlos Conductor", "Z91", "BOLSA HIELO 2KG", 2, 3000, 6000),
         (99, "Carlos Conductor", "Z92", "BOLSA HIELO 5KG", 1, 6000, 6000),
         (None, "Carlos Conductor", None, "Total vendedor", 4, None, 14500),
-        (None, None, None, "TOTAL DEL DÍA", 5, None, 22500),
+        (None, None, None, "TOTAL VENTAS", 5, None, 22500),
     ]
     assert rows[0][0].date() == today_bogota()
 
@@ -477,3 +477,171 @@ def test_la_hoja_1_solo_lleva_pos_en_efectivo(client, create_order, data):
 
     assert [r[3] for r in rows if r[3]] == ["Z91"]  # solo el producto en efectivo
     assert rows[-1][7] == 6000  # total del día de la factura global
+
+
+# --- Cambios finales B7 (paso 2): Excel de 3 hojas ---------------------------------------
+
+
+def _workbook(response):
+    assert response.status_code == 200, response.text
+    return load_workbook(BytesIO(response.content))
+
+
+def _rows(sheet) -> list[tuple]:
+    return list(sheet.iter_rows(values_only=True))
+
+
+@pytest.fixture()
+def mixed_day(client, create_order, data, default_seller):
+    """Un día con las categorías mezcladas en dos vendedores:
+    - conductor 99: POS efectivo (6000), POS transferencia (6000), FE crédito (8000)
+    - vendedor por defecto 09 (sin conductor): POS efectivo (3000), FE efectivo (6000)
+    """
+    driver = data.user_vehicle.id_user_vehicle
+    p0, p1, p2 = data.products
+    orders = [
+        create_order(items=[item(p0, 2)], id_user_vehicle=driver),
+        create_order(
+            items=[item(p1, 1)], id_user_vehicle=driver, payment_method="TRANSFER"
+        ),
+        create_order(
+            items=[item(p2, 1)],
+            id_user_vehicle=driver,
+            invoice_type="ELECTRONIC",
+            payment_method="CREDIT",
+        ),
+        create_order(items=[item(p0, 1)]),
+        create_order(items=[item(p1, 1)], invoice_type="ELECTRONIC"),
+    ]
+    for order in orders:
+        _dispatch(client, order)
+    return orders
+
+
+def test_el_excel_tiene_las_3_hojas(client, mixed_day):
+    workbook = _workbook(_export(client))
+
+    assert workbook.sheetnames == [
+        "Consolidado POS",
+        "Otras facturas",
+        "Cuadre de caja",
+    ]
+
+
+def test_hoja_otras_facturas_pedido_por_pedido(client, mixed_day):
+    sheet = _workbook(_export(client))["Otras facturas"]
+    header, *rows = _rows(sheet)
+
+    assert header[3:8] == (
+        "PO",
+        "Tipo factura",
+        "Método pago",
+        "Cliente factura",
+        "Cliente",
+    )
+    lines = [r for r in rows if r[0] is not None]  # renglones de producto
+    # Vendedor 09 (FE efectivo) va antes que el 99; dentro del 99: POS transf., FE crédito
+    assert [(r[1], r[4], r[5]) for r in lines] == [
+        (9, "Electrónica", "Efectivo"),
+        (99, "POS", "Transferencia"),
+        (99, "Electrónica", "Crédito"),
+    ]
+    pos_transfer = lines[1]
+    assert pos_transfer[6:8] == ("CUANTÍAS MENORES", "CLIENTE REGISTRADO")
+    fe_credit = lines[2]
+    assert fe_credit[6:8] == ("CLIENTE REGISTRADO", "CLIENTE REGISTRADO")
+    assert rows[-1][9] == "TOTAL OTRAS FACTURAS"
+    assert rows[-1][12] == 20000  # 6000 + 6000 + 8000
+
+
+def test_cuadre_de_caja_y_cruce_entre_hojas(client, mixed_day):
+    workbook = _workbook(_export(client))
+    _, *consolidated = _rows(workbook["Consolidado POS"])
+    _, *others = _rows(workbook["Otras facturas"])
+    header, *cash = _rows(workbook["Cuadre de caja"])
+
+    assert header == (
+        "Cód. vendedor",
+        "Vendedor",
+        "Pedidos",
+        "Efectivo POS",
+        "Efectivo FE",
+        "Transferencia POS",
+        "Transferencia FE",
+        "Crédito POS",
+        "Crédito FE",
+        "Total vendido",
+        "Efectivo a recibir",
+    )
+    by_seller = {row[0]: row for row in cash[:2]}
+    assert by_seller[9] == (9, "Hielo Foca", 2, 3000, 6000, 0, 0, 0, 0, 9000, 9000)
+    assert by_seller[99] == (
+        99,
+        "Carlos Conductor",
+        3,
+        6000,
+        0,
+        6000,
+        0,
+        0,
+        8000,
+        20000,
+        6000,
+    )
+    total = cash[2]
+    assert total[1] == "TOTAL"
+    assert total[2:] == (5, 9000, 6000, 6000, 0, 0, 8000, 29000, 15000)
+
+    # Cruces: hoja 3 = hoja 1 (efectivo POS) + hoja 2 (lo demás), por vendedor
+    consolidated_by_seller = {
+        r[2]: r[7] for r in consolidated if r[4] == "Total vendedor"
+    }
+    others_by_seller = {r[2]: r[12] for r in others if r[9] == "Total vendedor"}
+    for row in cash[:2]:
+        name, pos_cash, sold = row[1], row[3], row[9]
+        assert consolidated_by_seller.get(name, 0) == pos_cash
+        assert others_by_seller.get(name, 0) == sold - pos_cash
+    assert consolidated[-1][7] + others[-1][12] == total[9]
+
+
+def test_cuadre_lista_los_despachados_cancelados_sin_sumarlos(
+    client, create_order, db, data
+):
+    driver = data.user_vehicle.id_user_vehicle
+    kept = create_order(id_user_vehicle=driver)  # 6000
+    returned = create_order(id_user_vehicle=driver, payment_method="TRANSFER")
+    for order in (kept, returned):
+        _dispatch(client, order)
+    cancelled = mark_cancelled(db, returned["id_order"])
+    cancelled.cancel_note = "No estaba"
+    cancelled.cancelled_at = datetime(2026, 11, 11, 20, 15, tzinfo=UTC)  # 15:15 Bogotá
+    cancelled.id_user_canceller = data.taker.id_user
+    db.commit()
+
+    rows = _rows(_workbook(_export(client))["Cuadre de caja"])
+
+    total = next(r for r in rows if r[1] == "TOTAL")
+    assert total[9] == 6000  # el cancelado no suma
+    title = rows.index(("Pedidos despachados y cancelados (no suman)",) + (None,) * 10)
+    header, listed = rows[title + 1], rows[title + 2]
+    assert header[:3] == ("PO", "Vendedor", "Cliente")
+    assert listed[:10] == (
+        returned["purchase_order"],
+        "99 - Carlos Conductor",
+        "CLIENTE REGISTRADO",
+        "Transferencia",
+        "POS",
+        6000,
+        "Otro",
+        "No estaba",
+        "Ana Gestora",
+        "15:15",
+    )
+
+
+def test_cuadre_sin_cancelados(client, create_order, data):
+    _dispatch(client, create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle))
+
+    rows = _rows(_workbook(_export(client))["Cuadre de caja"])
+
+    assert rows[-1][0] == "Sin pedidos cancelados después del despacho"

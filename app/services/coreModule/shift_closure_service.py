@@ -21,7 +21,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.timezone import today_bogota
+from app.core.timezone import BOGOTA_TZ, today_bogota
 from app.models.coreModule.shift_closure import ShiftClosure
 from app.repositories.coreModule.order_repository import order_repository
 from app.repositories.coreModule.shift_closure_repository import (
@@ -43,6 +43,7 @@ from app.schemas.coreModule.shift_closure_schema import (
 from app.services.base_service import BaseService
 from app.services.coreModule.closure_consolidation import (
     CATEGORIES,
+    CancelledOrder,
     ClosureOrder,
     ClosureOrderLine,
     SellerClosure,
@@ -144,7 +145,9 @@ class ShiftClosureService(
 
         # El archivo se arma antes de escribir en la BD: si falla, no queda
         # ningún cierre marcado como exportado.
-        content = build_closure_workbook(closure_date, sellers)
+        content = build_closure_workbook(
+            closure_date, sellers, self.cancelled_after_dispatch(db, closure_date)
+        )
         shift_closure_repository.save_exported(
             db,
             closure_date,
@@ -221,6 +224,31 @@ class ShiftClosureService(
             sellers[owner_of(id_order)].orders.append(order)
 
         return sorted(sellers.values(), key=lambda s: s.seller_code)
+
+    @staticmethod
+    def cancelled_after_dispatch(db: Session, day: date) -> list[CancelledOrder]:
+        """Pedidos del día que se despacharon y luego se cancelaron (no suman)."""
+        return [
+            CancelledOrder(
+                purchase_order=row.purchase_order,
+                seller=(
+                    f"{int(row.driver_code)} - {row.driver_name}"
+                    if row.driver_code and row.driver_code.strip().isdigit()
+                    else row.driver_name or "Sin conductor"
+                ),
+                client_name=row.client_name,
+                payment_method=row.payment_method,
+                invoice_type=row.invoice_type,
+                total=row.order_total or Decimal(0),
+                cancel_reason=row.cancel_reason,
+                cancel_note=row.cancel_note,
+                canceller_name=row.canceller_name,
+                cancelled_at=(
+                    row.cancelled_at.astimezone(BOGOTA_TZ) if row.cancelled_at else None
+                ),
+            )
+            for row in order_repository.get_cancelled_after_dispatch(db, day)
+        ]
 
     @staticmethod
     def _default_seller_id(db: Session) -> int:
