@@ -170,6 +170,7 @@ class RepositoryRoute(BaseRepository[Route, RouteCreate, RouteUpdate]):
                 Client.name,
                 Client.phone,
                 Client.address,
+                Client.requires_electronic_invoice,
                 Neighborhood.name.label("neighborhood_name"),
                 Zone.name.label("zone_name"),
             )

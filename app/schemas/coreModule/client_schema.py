@@ -38,6 +38,9 @@ class ClientUpdate(ClientBase):
 
 class ClientResponse(ClientBase):
     id_client: int
+    # Solo lectura aquí; se gestiona en el panel (/clients/admin). El formulario
+    # de pedido lo usa para precargar el tipo de factura.
+    requires_electronic_invoice: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -57,6 +60,11 @@ class ClientAdminCreate(BaseModel):
     address: UpperText | None = Field(None, max_length=200)
     id_neighborhood: int = Field(..., gt=0, description="Barrio del cliente")
     active: bool = True
+    requires_electronic_invoice: bool = Field(
+        False,
+        description="Se le hace factura electrónica: sus pedidos nacen con "
+        "invoice_type = ELECTRONIC (se puede cambiar por pedido)",
+    )
 
 
 # PATCH parcial. `active` desactiva (False) o reactiva (True) al cliente.
@@ -72,6 +80,7 @@ class ClientAdminFilters:
     search: str | None = None  # nombre (contiene) o teléfono (empieza por)
     active: bool | None = None  # None = activos e inactivos
     id_zone: int | None = None
+    electronic_invoice: bool | None = None  # None = con y sin factura electrónica
 
 
 class ClientAdminRow(BaseModel):
@@ -84,6 +93,7 @@ class ClientAdminRow(BaseModel):
     id_zone: int
     zone_name: str
     active: bool
+    requires_electronic_invoice: bool
     special_prices_count: int = Field(
         ..., description="Productos con precio especial pactado"
     )

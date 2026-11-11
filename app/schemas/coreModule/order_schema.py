@@ -3,9 +3,14 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.coreModule.order import OrderState
 from app.schemas.coreModule.client_schema import NewClientInput
 from app.schemas.coreModule.order_detail_schema import OrderDetailResponse
+from app.utils.enums.invoice_type import InvoiceType
+from app.utils.enums.order_state import OrderState
+from app.utils.enums.payment_method import PaymentMethod
+from app.utils.schema_types import TrimmedText
+
+OBSERVATIONS_MAX = 500
 
 
 # Schema Base
@@ -43,6 +48,17 @@ class OrderCreateBase(BaseModel):
         "Para programar un pedido: una fecha futura (máx. 60 días)",
     )
     id_user_vehicle: int | None = Field(None, description="Opcional")
+    payment_method: PaymentMethod = Field(
+        PaymentMethod.CASH, description="Efectivo, transferencia o crédito"
+    )
+    invoice_type: InvoiceType | None = Field(
+        None,
+        description="Sin valor: la del cliente (ELECTRONIC si requiere factura "
+        "electrónica, si no POS). Un cliente temporal solo admite POS",
+    )
+    observations: TrimmedText | None = Field(
+        None, max_length=OBSERVATIONS_MAX, description="Observación general"
+    )
     items: list[OrderItemInput] = Field(..., min_length=1)
 
 
@@ -57,9 +73,9 @@ class OrderCreateExistingClient(OrderCreateBase):
     id_client: int
 
 
-# PATCH acotado: el único campo editable de un pedido es el conductor asignado.
-# No hereda de OrderBase a propósito (purchase_order, order_total e id_client
-# no deben modificarse por esta vía; los items van por sync_items).
+# PATCH acotado a los campos operativos del pedido. No hereda de OrderBase a
+# propósito (purchase_order, order_total e id_client no se modifican por esta
+# vía; los items van por sync_items).
 class OrderUpdate(BaseModel):
     """PATCH parcial: solo se modifica lo enviado."""
 
@@ -75,6 +91,22 @@ class OrderUpdate(BaseModel):
         None,
         description="Nuevo día de entrega (no admite null). Solo editable mientras "
         "el pedido está PENDING; recibe un consecutivo nuevo del día de destino",
+    )
+    payment_method: PaymentMethod | None = Field(
+        None,
+        description="No admite null. Editable en PENDING y DISPATCHED (p. ej. el "
+        "cliente decide pagar por transferencia al recibir)",
+    )
+    invoice_type: InvoiceType | None = Field(
+        None,
+        description="No admite null. Editable en PENDING y DISPATCHED; un cliente "
+        "temporal solo admite POS",
+    )
+    observations: TrimmedText | None = Field(
+        None,
+        max_length=OBSERVATIONS_MAX,
+        description="Observación general (null la borra). Editable en PENDING y "
+        "DISPATCHED",
     )
 
 
@@ -104,6 +136,12 @@ class OrderResponse(OrderBase):
     dispatch_time: time | None
     delivery_time: time | None
     state: OrderState
+    payment_method: PaymentMethod
+    invoice_type: InvoiceType
+    observations: str | None = None
+    has_receipt: bool = Field(
+        ..., description="Lleva comprobante de despacho: solo POS + efectivo"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -10,3 +10,5 @@ UpperText = Annotated[
 LowerText = Annotated[
     str, StringConstraints(strip_whitespace=True, to_lower=True, min_length=1)
 ]
+# Texto libre (observaciones, notas): sin cambio de caja. Vacío -> se envía null.
+TrimmedText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]

@@ -479,3 +479,68 @@ def test_cantidad_debe_ser_mayor_a_cero(client, route, data, cant):
     )
 
     assert response.status_code == 422
+
+
+# --- Método de pago y tipo de factura (cambios finales B2) ------------------------------
+
+
+def test_precarga_indica_que_clientes_facturan_electronico(client, route, db):
+    route.other.requires_electronic_invoice = True
+    db.commit()
+
+    template = client.get(f"{API}/orders/routes/{route.route.id_route}/template").json()
+
+    flags = {c["id_client"]: c["requires_electronic_invoice"] for c in template["clients"]}
+    assert flags[route.other.id_client] is True
+    assert flags[route.registered.id_client] is False
+
+
+def test_pago_y_factura_por_cliente_en_la_ruta(client, route, data, db):
+    route.other.requires_electronic_invoice = True
+    db.commit()
+    p0 = data.products[0]
+
+    response = _batch(
+        client,
+        route.route.id_route,
+        [
+            {
+                "id_client": route.registered.id_client,
+                "items": [ritem(p0, 1)],
+                "payment_method": "TRANSFER",
+                "observations": "Pagó por adelantado",
+            },
+            # sin método ni factura: efectivo y la factura del cliente (electrónica)
+            {"id_client": route.other.id_client, "items": [ritem(p0, 1)]},
+        ],
+    )
+
+    assert response.status_code == 201, response.text
+    orders = {o["id_client"]: o for o in response.json()["orders"]}
+    registered, other = orders[route.registered.id_client], orders[route.other.id_client]
+    assert (registered["payment_method"], registered["invoice_type"]) == (
+        "TRANSFER",
+        "POS",
+    )
+    assert registered["observations"] == "Pagó por adelantado"
+    assert (other["payment_method"], other["invoice_type"]) == ("CASH", "ELECTRONIC")
+
+
+def test_factura_de_la_ruta_se_puede_cambiar_por_cliente(client, route, data, db):
+    route.other.requires_electronic_invoice = True
+    db.commit()
+
+    response = _batch(
+        client,
+        route.route.id_route,
+        [
+            {
+                "id_client": route.other.id_client,
+                "items": [ritem(data.products[0], 1)],
+                "invoice_type": "POS",
+            }
+        ],
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["orders"][0]["invoice_type"] == "POS"

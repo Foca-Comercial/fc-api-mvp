@@ -5,7 +5,10 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
-from app.schemas.coreModule.order_schema import OrderResponse
+from app.schemas.coreModule.order_schema import OBSERVATIONS_MAX, OrderResponse
+from app.utils.enums.invoice_type import InvoiceType
+from app.utils.enums.payment_method import PaymentMethod
+from app.utils.schema_types import TrimmedText
 
 # Cantidad con la que se precarga cada producto en el formulario de la ruta
 DEFAULT_ROUTE_CANT = 1
@@ -55,6 +58,9 @@ class RouteTemplateClient(BaseModel):
     address: str | None
     neighborhood_name: str
     zone_name: str
+    requires_electronic_invoice: bool = Field(
+        ..., description="Sus pedidos salen con factura electrónica por defecto"
+    )
     products: list[RouteTemplateProduct] = Field(
         ...,
         description="Productos con precio especial. Vacío si el cliente no tiene "
@@ -83,6 +89,13 @@ class RouteOrderItemInput(BaseModel):
 
 class RouteOrderClientInput(BaseModel):
     id_client: int = Field(..., gt=0, description="Cliente de la ruta (ver /template)")
+    payment_method: PaymentMethod = Field(
+        PaymentMethod.CASH, description="Efectivo por defecto"
+    )
+    invoice_type: InvoiceType | None = Field(
+        None, description="Sin valor: la del cliente (requires_electronic_invoice)"
+    )
+    observations: TrimmedText | None = Field(None, max_length=OBSERVATIONS_MAX)
     items: list[RouteOrderItemInput] = Field(..., min_length=1)
 
 

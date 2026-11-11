@@ -68,6 +68,10 @@ class RepositoryClient(BaseRepository[Client, ClientCreate, ClientUpdate]):
             conditions.append(Client.active.is_(filters.active))
         if filters.id_zone is not None:
             conditions.append(Neighborhood.id_zone == filters.id_zone)
+        if filters.electronic_invoice is not None:
+            conditions.append(
+                Client.requires_electronic_invoice.is_(filters.electronic_invoice)
+            )
         return conditions
 
     @staticmethod
@@ -97,6 +101,7 @@ class RepositoryClient(BaseRepository[Client, ClientCreate, ClientUpdate]):
                 Zone.id_zone,
                 Zone.name.label("zone_name"),
                 Client.active,
+                Client.requires_electronic_invoice,
                 special_prices.label("special_prices_count"),
                 routes.label("routes_count"),
             )

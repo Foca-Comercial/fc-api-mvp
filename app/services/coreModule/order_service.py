@@ -42,7 +42,9 @@ from app.schemas.coreModule.route_order_schema import (
     RouteTemplateProduct,
 )
 from app.services.base_service import BaseService
+from app.utils.enums.invoice_type import InvoiceType
 from app.utils.enums.order_state import OrderState
+from app.utils.enums.payment_method import PaymentMethod
 from app.utils.exceptions.business_exceptions import (
     BusinessError,
     BusinessRuleViolationError,
@@ -209,14 +211,21 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             label="Barrio",
         )
         self._validate_items(db, obj_in.items)
-        # Valida la fecha antes de crear el cliente temporal
+        # Valida fecha y factura antes de crear el cliente temporal
         self._resolve_delivery_date(obj_in.delivery_date)
+        invoice_type = self._resolve_invoice_type(
+            obj_in.invoice_type, is_registered=False, requires_electronic=False
+        )
 
         client = client_repository.add(
             db, obj_in_data={**obj_in.client.model_dump(), "is_registered": False}
         )
         return self._create_order_with_items(
-            db, id_client=client.id_client, id_user_taker=id_user_taker, order_in=obj_in
+            db,
+            id_client=client.id_client,
+            id_user_taker=id_user_taker,
+            order_in=obj_in,
+            invoice_type=invoice_type,
         )
 
     # Creacion de pedido para un cliente existente
@@ -226,20 +235,30 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         self._ensure_reference(
             db, client_repository, obj_in.id_client, field="id_client", label="Cliente"
         )
-        if not client_repository.get(db, obj_in.id_client).is_registered:  # type: ignore
+        client = client_repository.get(db, obj_in.id_client)
+        if not client.is_registered:  # type: ignore
             raise BusinessValidationError(
                 "Solo se pueden tomar pedidos de clientes registrados en este flujo.",
                 field="id_client",
                 code="CLIENT_NOT_REGISTERED",
             )
         self._validate_items(db, obj_in.items)
+        invoice_type = self._resolve_invoice_type(
+            obj_in.invoice_type,
+            is_registered=True,
+            requires_electronic=client.requires_electronic_invoice,  # type: ignore
+        )
         return self._create_order_with_items(
-            db, id_client=obj_in.id_client, id_user_taker=id_user_taker, order_in=obj_in
+            db,
+            id_client=obj_in.id_client,
+            id_user_taker=id_user_taker,
+            order_in=obj_in,
+            invoice_type=invoice_type,
         )
 
     # Creacion de pedido directa a OrderDetail (un pedido, con commit)
     def _create_order_with_items(
-        self, db: Session, *, id_client, id_user_taker, order_in
+        self, db: Session, *, id_client, id_user_taker, order_in, invoice_type
     ) -> Order:
         delivery_date = self._resolve_delivery_date(order_in.delivery_date)
         if order_in.id_user_vehicle is not None:
@@ -253,6 +272,9 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
             delivery_date=delivery_date,
             estimated_delivery=order_in.estimated_delivery,
             id_user_vehicle=order_in.id_user_vehicle,
+            payment_method=order_in.payment_method,
+            invoice_type=invoice_type,
+            observations=order_in.observations,
         )
         db.commit()
         db.refresh(order)
@@ -277,6 +299,24 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 "adelante.",
                 field="delivery_date",
                 code="DELIVERY_DATE_TOO_FAR",
+            )
+        return requested
+
+    # Tipo de factura del pedido. Sin valor: la del cliente (se copia al pedido;
+    # un cambio posterior en el cliente no altera los pedidos ya tomados). Un
+    # cliente temporal siempre factura POS.
+    @staticmethod
+    def _resolve_invoice_type(
+        requested: InvoiceType | None, *, is_registered: bool, requires_electronic: bool
+    ) -> InvoiceType:
+        if requested is None:
+            return InvoiceType.ELECTRONIC if requires_electronic else InvoiceType.POS
+        if requested == InvoiceType.ELECTRONIC and not is_registered:
+            raise BusinessValidationError(
+                "Un cliente temporal (sin registrar) solo admite factura POS. "
+                "Regístralo en el panel para hacerle factura electrónica.",
+                field="invoice_type",
+                code="ELECTRONIC_INVOICE_NOT_ALLOWED",
             )
         return requested
 
@@ -319,6 +359,9 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
         estimated_delivery=None,
         id_user_vehicle: int | None = None,
         id_route: int | None = None,
+        payment_method: PaymentMethod = PaymentMethod.CASH,
+        invoice_type: InvoiceType = InvoiceType.POS,
+        observations: str | None = None,
     ) -> Order:
         order = order_repository.add(
             db,
@@ -330,6 +373,9 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 "id_user_vehicle": id_user_vehicle,
                 "id_user_taker": id_user_taker,
                 "id_route": id_route,
+                "payment_method": payment_method,
+                "invoice_type": invoice_type,
+                "observations": observations,
             },
         )
 
@@ -419,6 +465,7 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                     address=c.address,  # type: ignore
                     neighborhood_name=c.neighborhood_name,  # type: ignore
                     zone_name=c.zone_name,  # type: ignore
+                    requires_electronic_invoice=c.requires_electronic_invoice,  # type: ignore
                     products=products_by_client.get(c.id_client, []),  # type: ignore
                     existing_order_id=existing.get(c.id_client),  # type: ignore
                 )
@@ -455,8 +502,9 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 code="DUPLICATE_CLIENT",
             )
 
+        # {id_client: requiere factura electrónica} de los clientes de la ruta
         orderable = {
-            c.id_client  # type: ignore
+            c.id_client: c.requires_electronic_invoice  # type: ignore
             for c in route_repository.get_orderable_clients(db, id_route)  # type: ignore
         }
         outside = [i for i in client_ids if i not in orderable]
@@ -513,6 +561,13 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 estimated_delivery=obj_in.estimated_delivery,
                 id_user_vehicle=obj_in.id_user_vehicle,
                 id_route=id_route,
+                payment_method=client_order.payment_method,
+                invoice_type=self._resolve_invoice_type(
+                    client_order.invoice_type,
+                    is_registered=True,  # la ruta solo tiene clientes registrados
+                    requires_electronic=orderable[client_order.id_client],
+                ),
+                observations=client_order.observations,
             )
             for client_order in obj_in.orders
         ]
@@ -763,11 +818,36 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 field=next(
                     (
                         name
-                        for name in ("estimated_delivery", "delivery_date")
+                        for name in (
+                            "estimated_delivery",
+                            "delivery_date",
+                            "payment_method",
+                            "invoice_type",
+                            "observations",
+                        )
                         if name in sent
                     ),
                     "id_user_vehicle",
                 ),
+            )
+        # Método de pago, tipo de factura y observación: editables en PENDING y
+        # DISPATCHED (los estados finales ya se rechazaron arriba)
+        for name, label in (
+            ("payment_method", "método de pago"),
+            ("invoice_type", "tipo de factura"),
+        ):
+            if name in sent and getattr(obj_in, name) is None:
+                raise BusinessValidationError(
+                    f"El {label} del pedido no se puede quitar.",
+                    field=name,
+                    code="REQUIRED_FIELD",
+                )
+        new_invoice = obj_in.invoice_type
+        if new_invoice is not None and new_invoice != existing.invoice_type:
+            self._resolve_invoice_type(
+                new_invoice,
+                is_registered=existing.client.is_registered,
+                requires_electronic=existing.client.requires_electronic_invoice,
             )
         if "delivery_date" in sent:
             if obj_in.delivery_date is None:
