@@ -52,13 +52,13 @@ class _Seller(Protocol):
     seller_name: str
 
     @property
-    def lines(self) -> Sequence[_Line]: ...
+    def consolidated_lines(self) -> Sequence[_Line]: ...
 
     @property
-    def total_quantity(self) -> int: ...
+    def consolidated_quantity(self) -> int: ...
 
     @property
-    def total_sales(self) -> Decimal: ...
+    def consolidated_total(self) -> Decimal: ...
 
 
 def filename_for(day: date) -> str:
@@ -76,8 +76,10 @@ def build_closure_workbook(day: date, sellers: Sequence[_Seller]) -> bytes:
         cell.fill = _HEADER_FILL
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    for seller in sellers:
-        for line in seller.lines:
+    # Factura global: solo POS + efectivo; un vendedor sin esas ventas no aparece
+    consolidated = [s for s in sellers if s.consolidated_lines]
+    for seller in consolidated:
+        for line in seller.consolidated_lines:
             ws.append(  # type: ignore
                 (
                     day,
@@ -98,9 +100,9 @@ def build_closure_workbook(day: date, sellers: Sequence[_Seller]) -> bytes:
                 seller.seller_name,
                 None,
                 "Total vendedor",
-                seller.total_quantity,
+                seller.consolidated_quantity,
                 None,
-                seller.total_sales,
+                seller.consolidated_total,
             )
         )
         _style_total(ws, ws.max_row, _TOTAL_FILL)  # type: ignore
@@ -112,9 +114,9 @@ def build_closure_workbook(day: date, sellers: Sequence[_Seller]) -> bytes:
             None,
             None,
             "TOTAL DEL DÍA",
-            sum(s.total_quantity for s in sellers),
+            sum(s.consolidated_quantity for s in consolidated),
             None,
-            sum((s.total_sales for s in sellers), Decimal(0)),
+            sum((s.consolidated_total for s in consolidated), Decimal(0)),
         )
     )
     _style_total(ws, ws.max_row, _GRAND_FILL)  # type: ignore

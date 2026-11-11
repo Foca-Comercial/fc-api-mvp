@@ -366,3 +366,114 @@ def test_exportar_sin_vendedor_por_defecto_no_registra_nada(
     assert response.status_code == 422
     assert response.json()["code"] == "DEFAULT_SELLER_MISSING"
     assert _closures(db) == {}
+
+
+# --- Cambios finales B7 (paso 1): categorías, cuadre y huella -----------------------------
+
+
+def test_resumen_separa_la_factura_global_de_las_otras_ventas(
+    client, create_order, data
+):
+    driver = data.user_vehicle.id_user_vehicle
+    p0, p1, p2 = data.products
+    pos_cash = create_order(items=[item(p0, 2)], id_user_vehicle=driver)  # 6000
+    pos_transfer = create_order(
+        items=[item(p1, 1)], id_user_vehicle=driver, payment_method="TRANSFER"
+    )  # 6000
+    fe_cash = create_order(
+        items=[item(p2, 1)], id_user_vehicle=driver, invoice_type="ELECTRONIC"
+    )  # 8000
+    fe_credit = create_order(
+        items=[item(p0, 1)],
+        id_user_vehicle=driver,
+        invoice_type="ELECTRONIC",
+        payment_method="CREDIT",
+    )  # 3000
+    for order in (pos_cash, pos_transfer, fe_cash, fe_credit):
+        _dispatch(client, order)
+
+    body = _summary(client)
+
+    (row,) = body["sellers"]
+    # Factura global: solo el pedido POS en efectivo
+    assert [(p["product_code"], p["quantity"]) for p in row["products"]] == [("Z91", 2)]
+    assert row["total_quantity"] == 2
+    assert Decimal(row["consolidated_total"]) == Decimal("6000")
+    # Todas las ventas del vendedor
+    assert (row["orders_count"], row["other_orders_count"]) == (4, 3)
+    totals = {k: Decimal(v) for k, v in row["totals"].items()}
+    assert totals == {
+        "pos_cash": Decimal("6000"),
+        "electronic_cash": Decimal("8000"),
+        "pos_transfer": Decimal("6000"),
+        "electronic_transfer": Decimal("0"),
+        "pos_credit": Decimal("0"),
+        "electronic_credit": Decimal("3000"),
+    }
+    assert Decimal(row["total_sales"]) == Decimal("23000")
+    assert Decimal(row["cash_to_collect"]) == Decimal("14000")  # 6000 + 8000
+    # Cards: los mismos totales del día
+    cards = body["cards"]
+    assert Decimal(cards["total_income"]) == Decimal("23000")
+    assert Decimal(cards["cash_to_collect"]) == Decimal("14000")
+    assert Decimal(cards["totals"]["electronic_credit"]) == Decimal("3000")
+
+
+def test_cuenta_los_cancelados_despues_de_despachar(client, create_order, db):
+    dispatched_then_cancelled = create_order()
+    cancelled_while_pending = create_order()
+    _dispatch(client, dispatched_then_cancelled)
+    mark_cancelled(db, dispatched_then_cancelled["id_order"])
+    mark_cancelled(db, cancelled_while_pending["id_order"])
+    db.commit()
+
+    cards = _summary(client)["cards"]
+
+    assert cards["cancelled"] == 2
+    assert cards["cancelled_after_dispatch"] == 1  # solo el que ya había salido
+
+
+def test_exportar_guarda_la_huella(client, create_order, db, data):
+    _dispatch(client, create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle))
+
+    assert _export(client).status_code == 200
+
+    closure = _closures(db)[data.user_vehicle.id_user_vehicle]
+    assert closure.signature is not None and len(closure.signature) == 64
+
+
+@pytest.mark.parametrize(
+    "change", [{"payment_method": "TRANSFER"}, {"invoice_type": "ELECTRONIC"}]
+)
+def test_cambiar_pago_o_factura_tras_exportar_desactualiza_el_cierre(
+    client, create_order, data, change
+):
+    """Con la huella se detecta aunque la cantidad de pedidos y el total no cambien."""
+    order = create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle)
+    _dispatch(client, order)
+    _export(client)
+    assert _summary(client)["exported"] is True
+
+    patched = client.patch(f"{API}/orders/{order['id_order']}", json=change)
+    assert patched.status_code == 200, patched.text
+
+    body = _summary(client)
+    assert body["sellers"][0]["export_outdated"] is True
+    assert body["exported"] is False
+
+
+def test_la_hoja_1_solo_lleva_pos_en_efectivo(client, create_order, data):
+    driver = data.user_vehicle.id_user_vehicle
+    p0, p1, _ = data.products
+    _dispatch(client, create_order(items=[item(p0, 2)], id_user_vehicle=driver))
+    _dispatch(
+        client,
+        create_order(
+            items=[item(p1, 1)], id_user_vehicle=driver, payment_method="TRANSFER"
+        ),
+    )
+
+    _, *rows = _sheet_rows(_export(client))
+
+    assert [r[3] for r in rows if r[3]] == ["Z91"]  # solo el producto en efectivo
+    assert rows[-1][7] == 6000  # total del día de la factura global

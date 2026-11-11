@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
@@ -312,46 +313,79 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
         )
         return {state: count for state, count in db.execute(stmt).all()}
 
-    # Pedidos facturables del día por vendedor: {id_user_vehicle | None: cantidad}.
-    # La clave None agrupa los pedidos sin conductor asignado.
-    def count_billable_by_seller(self, db: Session, day: date) -> dict[int | None, int]:
-        stmt = (
-            select(Order.id_user_vehicle, func.count(Order.id_order))
-            .where(
-                Order.delivery_date == day,
-                Order.state.in_(BILLABLE_STATES),
-            )
-            .group_by(Order.id_user_vehicle)
-        )
-        return {id_uv: count for id_uv, count in db.execute(stmt).all()}
-
-    # Renglones facturables del día agrupados por (vendedor, producto, precio).
-    # Un mismo producto vendido a precios distintos queda en renglones separados.
-    def get_billable_lines(self, db: Session, day: date) -> list[tuple]:
+    # Pedidos facturables del día con sus renglones: una fila por renglón, en orden
+    # de pedido. Es la única fuente del cierre: el consolidado, las otras
+    # facturas, el cuadre, el resumen y la huella se arman con estas mismas filas.
+    def get_billable_order_lines(self, db: Session, day: date) -> list[Any]:
         stmt = (
             select(
+                Order.id_order,
+                Order.purchase_order,
+                Order.state,
+                Order.payment_method,
+                Order.invoice_type,
+                Order.order_total,
                 Order.id_user_vehicle,
+                Client.name.label("client_name"),
+                OrderDetail.id_order_detail,
                 Product.id_product,
                 Product.code.label("product_code"),
                 Product.name.label("product_name"),
+                OrderDetail.cant,
                 OrderDetail.unit_price,
-                func.sum(OrderDetail.cant).label("quantity"),
-                func.sum(OrderDetail.subtotal).label("subtotal"),
+                OrderDetail.subtotal,
             )
+            .join(Client, Client.id_client == Order.id_client)
             .join(OrderDetail, OrderDetail.id_order == Order.id_order)
             .join(Product, Product.id_product == OrderDetail.id_product)
             .where(
                 Order.delivery_date == day,
                 Order.state.in_(BILLABLE_STATES),
             )
-            .group_by(
+            .order_by(Order.id_order, OrderDetail.id_order_detail)
+        )
+        return list(db.execute(stmt).all())
+
+    # Pedidos del día que se despacharon y después se cancelaron (devoluciones):
+    # listado informativo del cierre, no suman.
+    def get_cancelled_after_dispatch(self, db: Session, day: date) -> list[Any]:
+        Canceller = aliased(User)
+        CancellerPerson = aliased(Person)
+        stmt = (
+            select(
+                Order.id_order,
+                Order.purchase_order,
                 Order.id_user_vehicle,
-                Product.id_product,
-                Product.code,
-                Product.name,
-                OrderDetail.unit_price,
+                UserVehicle.code.label("driver_code"),
+                (Person.name + " " + Person.last_name).label("driver_name"),
+                Client.name.label("client_name"),
+                Order.payment_method,
+                Order.invoice_type,
+                Order.order_total,
+                Order.cancel_reason,
+                Order.cancel_note,
+                Order.cancelled_at,
+                (CancellerPerson.name + " " + CancellerPerson.last_name).label(
+                    "canceller_name"
+                ),
             )
-            .order_by(Product.code, OrderDetail.unit_price)
+            .join(Client, Client.id_client == Order.id_client)
+            .outerjoin(
+                UserVehicle, UserVehicle.id_user_vehicle == Order.id_user_vehicle
+            )
+            .outerjoin(UserRole, UserRole.id_user_role == UserVehicle.id_user_role)
+            .outerjoin(User, User.id_user == UserRole.id_user)
+            .outerjoin(Person, Person.id_person == User.id_person)
+            .outerjoin(Canceller, Canceller.id_user == Order.id_user_canceller)
+            .outerjoin(
+                CancellerPerson, CancellerPerson.id_person == Canceller.id_person
+            )
+            .where(
+                Order.delivery_date == day,
+                Order.state == OrderState.CANCELLED,
+                Order.dispatch_time.is_not(None),
+            )
+            .order_by(Order.purchase_order, Order.id_order)
         )
         return list(db.execute(stmt).all())
 

@@ -40,8 +40,19 @@ class ClosureProduct(BaseModel):
     product_code: str
     product_name: str
     quantity: int = Field(
-        ..., description="Unidades del día, sumando todos los precios"
+        ..., description="Unidades de la factura global, sumando todos los precios"
     )
+
+
+class ClosureCategoryTotals(BaseModel):
+    """Ventas por tipo de factura y método de pago (las columnas del cuadre)."""
+
+    pos_cash: Decimal = Field(..., description="POS en efectivo: la factura global")
+    electronic_cash: Decimal
+    pos_transfer: Decimal
+    electronic_transfer: Decimal
+    pos_credit: Decimal
+    electronic_credit: Decimal
 
 
 class ClosureSellerRow(BaseModel):
@@ -50,21 +61,34 @@ class ClosureSellerRow(BaseModel):
         ..., description="Código del vendedor sin ceros a la izquierda (Siigo)"
     )
     seller_name: str
-    products: list[ClosureProduct]
-    total_quantity: int
-    orders_count: int
+    # Factura global (solo POS + efectivo)
+    products: list[ClosureProduct] = Field(
+        ..., description="Productos de la factura global (POS + efectivo)"
+    )
+    total_quantity: int = Field(..., description="Unidades de la factura global")
+    consolidated_total: Decimal = Field(..., description="Total de la factura global")
+    # Todas las ventas del vendedor
+    orders_count: int = Field(..., description="Pedidos facturables (todas las categorías)")
+    other_orders_count: int = Field(
+        ..., description="Pedidos que no van a la factura global (hoja Otras facturas)"
+    )
     unassigned_orders: int = Field(
         0,
         description="Pedidos sin conductor sumados a este vendedor (solo el de "
         "por defecto)",
     )
-    total_sales: Decimal
+    totals: ClosureCategoryTotals
+    total_sales: Decimal = Field(..., description="Todas las categorías")
+    cash_to_collect: Decimal = Field(
+        ..., description="Efectivo a recibir: POS efectivo + FE efectivo"
+    )
     exported_at: datetime | None = Field(
-        None, description="Última exportación a Siigo de este vendedor y día"
+        None, description="Última exportación de este vendedor y día"
     )
     export_outdated: bool = Field(
         False,
-        description="Se exportó, pero los pedidos o el total cambiaron después",
+        description="Se exportó, pero algún pedido cambió después (estado, pago, "
+        "factura, productos o vendedor)",
     )
 
 
@@ -74,9 +98,17 @@ class ClosureCards(BaseModel):
     dispatched: int
     delivered: int
     cancelled: int
+    cancelled_after_dispatch: int = Field(
+        ..., description="Cancelados después de despacharse (devoluciones)"
+    )
     sellers_count: int = Field(..., description="Vendedores con pedidos facturables")
+    totals: ClosureCategoryTotals
     total_income: Decimal = Field(
-        ..., description="Total facturable: despachados + entregados"
+        ..., description="Total facturable: despachados + entregados, todas las "
+        "categorías"
+    )
+    cash_to_collect: Decimal = Field(
+        ..., description="Efectivo a recibir: POS efectivo + FE efectivo"
     )
 
 
