@@ -16,6 +16,7 @@ from app.repositories.coreModule.shift_closure_repository import (
     shift_closure_repository,
 )
 from app.services.coreModule.closure_export import MEDIA_TYPE
+from app.services.coreModule.shift_closure_service import shift_closure_service
 from tests.helpers import API, item, mark_cancelled
 
 URL = f"{API}/shifts_closures"
@@ -645,3 +646,64 @@ def test_cuadre_sin_cancelados(client, create_order, data):
     rows = _rows(_workbook(_export(client))["Cuadre de caja"])
 
     assert rows[-1][0] == "Sin pedidos cancelados después del despacho"
+
+
+# --- Cambios finales B7 (paso 3): días sin cerrar con la misma huella ---------------------
+
+
+def _unclosed(db) -> list[date]:
+    return shift_closure_service.unclosed_days(db, today_bogota().replace(day=1))
+
+
+def test_dia_sin_exportar_queda_sin_cerrar(client, create_order, db, data):
+    _dispatch(client, create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle))
+
+    assert _unclosed(db) == [today_bogota()]
+
+    _export(client)
+    assert _unclosed(db) == []
+
+
+def test_cambio_de_pago_tras_exportar_reabre_el_dia(client, create_order, db, data):
+    order = create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle)
+    _dispatch(client, order)
+    _export(client)
+
+    client.patch(
+        f"{API}/orders/{order['id_order']}", json={"payment_method": "CREDIT"}
+    )
+
+    assert _unclosed(db) == [today_bogota()]  # mismos totales, distinta huella
+
+
+def test_cierre_de_un_vendedor_que_ya_no_tiene_pedidos_reabre_el_dia(
+    client, create_order, db, data, default_seller
+):
+    order = create_order(id_user_vehicle=data.user_vehicle.id_user_vehicle)
+    _dispatch(client, order)
+    _export(client)
+    db.get(Order, order["id_order"]).id_user_vehicle = default_seller.id_user_vehicle
+    db.commit()
+
+    assert _unclosed(db) == [today_bogota()]
+
+
+def test_cierre_anterior_a_la_huella_se_compara_por_totales(
+    client, create_order, db, data
+):
+    driver = data.user_vehicle.id_user_vehicle
+    _dispatch(client, create_order(id_user_vehicle=driver))  # 6000
+    db.add(
+        ShiftClosure(
+            closure_date=today_bogota(),
+            id_user_vehicle=driver,
+            total_orders=1,
+            total_sales=Decimal("6000"),
+            exported_siigo=True,
+            exported_at=datetime.now(UTC),
+            signature=None,
+        )
+    )
+    db.commit()
+
+    assert _unclosed(db) == []

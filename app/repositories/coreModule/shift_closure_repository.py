@@ -8,11 +8,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.timezone import bogota_month_range
-from app.models.coreModule.order import Order
-from app.models.coreModule.order_detail import OrderDetail
 from app.models.coreModule.shift_closure import ShiftClosure
 from app.repositories.base_repository import BaseRepository
-from app.repositories.coreModule.order_repository import BILLABLE_STATES
 from app.schemas.coreModule.shift_closure_schema import (
     ShiftClosureCreate,
     ShiftClosureUpdate,
@@ -84,45 +81,23 @@ class RepositoryShiftClosure(
         )
         db.execute(stmt)
 
-    # Días del mes con pedidos facturables cuyo cierre no está exportado o quedó
-    # desactualizado: la cantidad de pedidos o el total exportados (sumando
-    # todos los vendedores del día) no coinciden con los pedidos actuales.
-    def get_unclosed_days(self, db: Session, month: date) -> list[date]:
+    # Cierres exportados del mes: {día: {id_user_vehicle: ShiftClosure}}. La purga
+    # los compara con los pedidos actuales (ShiftClosureService.unclosed_days).
+    def get_exported_in_month(
+        self, db: Session, month: date
+    ) -> dict[date, dict[int, ShiftClosure]]:
         start, end = bogota_month_range(month.year, month.month)
-        order_day = Order.delivery_date
-        billable = (
-            select(
-                order_day.label("order_day"),
-                func.count(func.distinct(Order.id_order)).label("orders"),
-                func.sum(OrderDetail.subtotal).label("sales"),
-            )
-            .join(OrderDetail, OrderDetail.id_order == Order.id_order)
-            .where(
-                Order.delivery_date >= start.date(),
-                Order.delivery_date < end.date(),
-                Order.state.in_(BILLABLE_STATES),
-            )
-            .group_by("order_day")
+        stmt = select(ShiftClosure).where(
+            ShiftClosure.closure_date >= start.date(),
+            ShiftClosure.closure_date < end.date(),
+            ShiftClosure.exported_siigo.is_(True),
         )
-        exported = (
-            select(
-                ShiftClosure.closure_date,
-                func.sum(ShiftClosure.total_orders),
-                func.sum(ShiftClosure.total_sales),
+        by_day: dict[date, dict[int, ShiftClosure]] = {}
+        for closure in db.scalars(stmt).all():
+            by_day.setdefault(closure.closure_date, {})[closure.id_user_vehicle] = (
+                closure
             )
-            .where(
-                ShiftClosure.closure_date >= start.date(),
-                ShiftClosure.closure_date < end.date(),
-                ShiftClosure.exported_siigo.is_(True),
-            )
-            .group_by(ShiftClosure.closure_date)
-        )
-        closed = {day: (orders, sales) for day, orders, sales in db.execute(exported)}
-        return sorted(
-            row.order_day
-            for row in db.execute(billable)
-            if closed.get(row.order_day) != (row.orders, row.sales)
-        )
+        return by_day
 
 
 # Intancia del repositorio inyectando el modelo ORM

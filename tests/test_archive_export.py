@@ -184,3 +184,36 @@ def test_verificacion_de_filas_fallida(admin, writer, create_order, period, db):
 
 def test_solo_admin_exporta(client, writer, period):
     assert _export(client, period).status_code == 403
+
+
+# --- Cambios finales B7 (paso 3): pago, factura, observación y motivo -------------------
+
+
+def test_exporta_pago_factura_observacion_y_motivo(
+    admin, writer, create_order, period, db
+):
+    first = create_order(
+        payment_method="TRANSFER", invoice_type="ELECTRONIC", observations="Portería"
+    )
+    second = create_order()
+    mark_cancelled(db, second["id_order"])
+    db.commit()
+
+    response = _export(admin, period)
+
+    assert response.status_code == 200, response.text
+    sheet = writer.sheets[(SHEET_ID, period)]
+    assert sheet["header"][-4:] == [
+        "Método pago",
+        "Tipo factura",
+        "Observación",
+        "Motivo cancelación",
+    ]
+    by_po = {row[2]: row for row in sheet["rows"]}
+    assert by_po[first["purchase_order"]][-4:] == [
+        "Transferencia",
+        "Electrónica",
+        "Portería",
+        "",
+    ]
+    assert by_po[second["purchase_order"]][-4:] == ["Efectivo", "POS", "", "Otro"]

@@ -4,6 +4,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from app.services.coreModule.closure_consolidation import (
+    CANCEL_REASON_LABELS,
+    INVOICE_LABELS,
+    PAYMENT_LABELS,
+)
 from app.utils.enums.order_state import OrderState
 
 STATE_LABELS = {
@@ -33,6 +38,11 @@ HEADER = (
     "Precio unit.",
     "Subtotal",
     "Total pedido",
+    # Cambios finales: al final, para no mover las columnas anteriores
+    "Método pago",
+    "Tipo factura",
+    "Observación",
+    "Motivo cancelación",
 )
 # Índices (desde 0) de las columnas con formato de moneda
 MONEY_COLUMNS = (16, 17, 18)
@@ -86,6 +96,10 @@ def build_export_table(rows: list) -> ExportTable:
                 _money(row.unit_price),
                 _money(row.subtotal),
                 _money(row.order_total),
+                PAYMENT_LABELS[row.payment_method],
+                INVOICE_LABELS[row.invoice_type],
+                row.observations or "",
+                CANCEL_REASON_LABELS[row.cancel_reason] if row.cancel_reason else "",
             ]
         )
         if row.state != OrderState.CANCELLED:

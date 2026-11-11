@@ -54,6 +54,7 @@ from app.services.coreModule.closure_export import (
 )
 from app.utils.enums.order_state import OrderState
 from app.utils.exceptions.business_exceptions import (
+    BusinessError,
     BusinessRuleViolationError,
     BusinessValidationError,
 )
@@ -163,6 +164,35 @@ class ShiftClosureService(
         )
         db.commit()
         return filename_for(closure_date), content
+
+    # ------------------------------------------------------------------
+    # Días sin cerrar (bloqueo de la purga y vista Archivo mensual)
+    # ------------------------------------------------------------------
+    def unclosed_days(self, db: Session, month: date) -> list[date]:
+        """Días del mes con pedidos facturables cuyo cierre no está exportado o
+        cambió después de exportarse. Usa el mismo cálculo (y la misma huella)
+        que el resumen del cierre, así que la purga y la vista Cierre nunca
+        discrepan sobre si un día está cerrado."""
+        exported = shift_closure_repository.get_exported_in_month(db, month)
+        unclosed: list[date] = []
+        for day in order_repository.get_billable_days(db, month):
+            closures = exported.get(day)
+            if not closures:
+                unclosed.append(day)  # nunca se exportó
+                continue
+            try:
+                sellers = self.consolidate(db, day)
+            except BusinessError:
+                # P. ej. falta el vendedor por defecto: el día no se puede cerrar
+                unclosed.append(day)
+                continue
+            current = {s.id_user_vehicle: s for s in sellers}
+            if set(current) != set(closures) or any(
+                _is_outdated(seller, closures[id_uv])
+                for id_uv, seller in current.items()
+            ):
+                unclosed.append(day)
+        return unclosed
 
     # ------------------------------------------------------------------
     # Consolidación (la usan el resumen, la exportación y la purga)
@@ -280,14 +310,7 @@ class ShiftClosureService(
         outdated = False
         if closure is not None and closure.exported_siigo:
             exported_at = closure.exported_at
-            if closure.signature is not None:
-                outdated = closure.signature != seller.signature
-            else:
-                # Cierres exportados antes de la huella: se comparan por totales
-                outdated = (
-                    closure.total_orders != seller.orders_count
-                    or closure.total_sales != seller.total_sales
-                )
+            outdated = _is_outdated(seller, closure)
         return ClosureSellerRow(
             id_user_vehicle=seller.id_user_vehicle,
             seller_code=seller.seller_code,
@@ -311,6 +334,17 @@ class ShiftClosureService(
             exported_at=exported_at,
             export_outdated=outdated,
         )
+
+
+def _is_outdated(seller: SellerClosure, closure: ShiftClosure) -> bool:
+    """¿Cambiaron los pedidos del vendedor después de exportar su cierre?"""
+    if closure.signature is not None:
+        return closure.signature != seller.signature
+    # Cierres exportados antes de la huella: se comparan por cantidad y total
+    return (
+        closure.total_orders != seller.orders_count
+        or closure.total_sales != seller.total_sales
+    )
 
 
 def _category_totals(sellers: list[SellerClosure]) -> ClosureCategoryTotals:

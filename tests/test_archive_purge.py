@@ -267,3 +267,18 @@ def test_cierre_desactualizado_tambien_bloquea(admin, writer, old, default_selle
 
     assert response.status_code == 422
     assert response.json()["code"] == "MONTH_NOT_CLOSED"
+
+
+def test_cambio_de_pago_tras_el_cierre_bloquea_la_purga(
+    admin, writer, old, default_seller
+):
+    """Solo la huella lo detecta: la cantidad de pedidos y el total no cambian."""
+    order = old.old_orders[0]
+    _dispatch(admin, order)
+    _export_closure(admin, old.month.replace(day=10))
+    admin.patch(f"{API}/orders/{order['id_order']}", json={"payment_method": "CREDIT"})
+
+    response = _purge(admin, old.period)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "MONTH_NOT_CLOSED"

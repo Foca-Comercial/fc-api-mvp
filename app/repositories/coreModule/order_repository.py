@@ -273,6 +273,10 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
                 OrderDetail.unit_price,
                 OrderDetail.subtotal,
                 Order.order_total,
+                Order.payment_method,
+                Order.invoice_type,
+                Order.observations,
+                Order.cancel_reason,
             )
             .join(OrderDetail, OrderDetail.id_order == Order.id_order)
             .join(Product, Product.id_product == OrderDetail.id_product)
@@ -345,6 +349,21 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .order_by(Order.id_order, OrderDetail.id_order_detail)
         )
         return list(db.execute(stmt).all())
+
+    # Días del mes (por día de entrega) que tienen pedidos facturables
+    def get_billable_days(self, db: Session, month: date) -> list[date]:
+        start, end = bogota_month_range(month.year, month.month)
+        stmt = (
+            select(Order.delivery_date)
+            .where(
+                Order.delivery_date >= start.date(),
+                Order.delivery_date < end.date(),
+                Order.state.in_(BILLABLE_STATES),
+            )
+            .distinct()
+            .order_by(Order.delivery_date)
+        )
+        return list(db.scalars(stmt).all())
 
     # Pedidos del día que se despacharon y después se cancelaron (devoluciones):
     # listado informativo del cierre, no suman.
