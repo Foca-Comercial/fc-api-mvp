@@ -12,8 +12,7 @@ from app.models.coreModule.client_route import ClientRoute
 from app.models.coreModule.order import Order
 from app.models.coreModule.special_customer_price import SpecialCustomerPrice
 from app.models.parametersModule.route import Route
-from app.utils.enums.order_state import OrderState
-from tests.helpers import API
+from tests.helpers import API, mark_cancelled
 
 MONDAY = date(2026, 10, 12)
 TUESDAY = date(2026, 10, 13)
@@ -272,7 +271,7 @@ def test_un_pedido_cancelado_no_bloquea_volver_a_generarlo(client, route, data, 
         route.route.id_route,
         [{"id_client": route.registered.id_client, "items": [ritem(p0, 1)]}],
     ).json()
-    db.get(Order, created["orders"][0]["id_order"]).state = OrderState.CANCELLED
+    mark_cancelled(db, created["orders"][0]["id_order"])
     db.commit()
 
     again = _batch(

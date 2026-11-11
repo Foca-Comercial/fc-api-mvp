@@ -12,14 +12,32 @@ from sqlalchemy import (
     Numeric,
     String,
     Time,
+    and_,
     func,
     text,
 )
 from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.database import Base
+from app.utils.enums.cancel_reason import CancelReason
+from app.utils.enums.invoice_type import InvoiceType
 from app.utils.enums.order_state import OrderState
+from app.utils.enums.payment_method import PaymentMethod
+
+
+def _text_enum(enum_cls, length: int) -> SQLEnum:
+    """Enum guardado como VARCHAR (sin tipo ENUM nativo). El CHECK de valores se
+    declara explícito en __table_args__ (y en la migración)."""
+    return SQLEnum(
+        enum_cls,
+        native_enum=False,
+        create_constraint=False,
+        length=length,
+        values_callable=lambda members: [m.value for m in members],
+    )
 
 if TYPE_CHECKING:
     from app.models.coreModule.client import Client
@@ -44,6 +62,23 @@ class Order(Base):
         Index("idx_sale_order_creation_datetime", "creation_datetime"),
         # Día en que se atiende el pedido: tablero, rutas, cierre, archivado
         Index("idx_sale_order_delivery_date", "delivery_date"),
+        CheckConstraint(
+            "payment_method IN ('CASH', 'TRANSFER', 'CREDIT')",
+            name="chk_order_payment_method",
+        ),
+        CheckConstraint(
+            "invoice_type IN ('POS', 'ELECTRONIC')", name="chk_order_invoice_type"
+        ),
+        CheckConstraint(
+            "cancel_reason IS NULL OR cancel_reason IN "
+            "('WRONG_BILLING', 'CLIENT_ABSENT', 'DAMAGED_PRODUCT', 'OTHER')",
+            name="chk_order_cancel_reason_value",
+        ),
+        # Todo pedido cancelado tiene motivo, y solo los cancelados lo tienen
+        CheckConstraint(
+            "(state = 'CANCELLED') = (cancel_reason IS NOT NULL)",
+            name="chk_order_cancel_reason",
+        ),
     )
 
     id_order: Mapped[int] = mapped_column(
@@ -78,6 +113,36 @@ class Order(Base):
     )
     order_total: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
+    # Facturación: cómo paga y qué factura lleva. El tipo de factura se copia del
+    # cliente al crear el pedido (un cambio posterior en el cliente no lo altera).
+    payment_method: Mapped[PaymentMethod] = mapped_column(
+        _text_enum(PaymentMethod, 20),
+        nullable=False,
+        default=PaymentMethod.CASH,
+        server_default=PaymentMethod.CASH.value,
+    )
+    invoice_type: Mapped[InvoiceType] = mapped_column(
+        _text_enum(InvoiceType, 20),
+        nullable=False,
+        default=InvoiceType.POS,
+        server_default=InvoiceType.POS.value,
+    )
+    observations: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Cancelación (solo con state = CANCELLED; ver chk_order_cancel_reason)
+    cancel_reason: Mapped[CancelReason | None] = mapped_column(
+        _text_enum(CancelReason, 30), nullable=True
+    )
+    cancel_note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Última edición de los productos del pedido (PUT /orders/{id}/items-order)
+    items_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Claves Foraneas
     id_client: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("client.id_client", ondelete="RESTRICT"), nullable=False
@@ -101,6 +166,24 @@ class Order(Base):
         "User", foreign_keys=[id_user_taker], back_populates="orders"
     )
 
+    id_user_canceller: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("app_user.id_user", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    user_canceller: Mapped["User | None"] = relationship(
+        "User", foreign_keys=[id_user_canceller]
+    )
+
+    id_user_items_updater: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("app_user.id_user", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    user_items_updater: Mapped["User | None"] = relationship(
+        "User", foreign_keys=[id_user_items_updater]
+    )
+
     # Ruta de la que se generó el pedido (None = pedido tomado individualmente)
     id_route: Mapped[int | None] = mapped_column(
         BigInteger,
@@ -111,3 +194,21 @@ class Order(Base):
 
     # PNI
     order_details: Mapped[list["OrderDetail"]] = relationship(back_populates="order")
+
+    # Regla única "lleva CD": solo POS + efectivo genera comprobante de despacho y
+    # entra al consolidado del cierre. Sirve en Python (order.has_receipt) y en
+    # SQL (select(Order.has_receipt) / .where(Order.has_receipt)).
+    @hybrid_property
+    def has_receipt(self) -> bool:
+        return (
+            self.payment_method == PaymentMethod.CASH
+            and self.invoice_type == InvoiceType.POS
+        )
+
+    @has_receipt.inplace.expression
+    @classmethod
+    def _has_receipt_expression(cls) -> ColumnElement[bool]:
+        return and_(
+            cls.payment_method == PaymentMethod.CASH,
+            cls.invoice_type == InvoiceType.POS,
+        )

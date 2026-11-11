@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    CHAR,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -45,6 +46,10 @@ class ShiftClosure(Base):
     exported_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Huella (SHA-256) de los pedidos facturables del vendedor ese día al
+    # exportar: id, estado, método de pago, tipo de factura y total. Si cambia
+    # cualquiera, el cierre queda desactualizado. Null en cierres anteriores.
+    signature: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
 
     # Claves Foraneas
     id_user_vehicle: Mapped[int] = mapped_column(

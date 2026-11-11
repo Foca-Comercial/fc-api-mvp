@@ -16,8 +16,7 @@ from app.repositories.coreModule.shift_closure_repository import (
     shift_closure_repository,
 )
 from app.services.coreModule.closure_export import MEDIA_TYPE
-from app.utils.enums.order_state import OrderState
-from tests.helpers import API, item
+from tests.helpers import API, item, mark_cancelled
 
 URL = f"{API}/shifts_closures"
 
@@ -87,7 +86,7 @@ def test_resumen_consolida_por_vendedor_y_cuenta_estados(
     _dispatch(client, a)
     _dispatch(client, b, deliver=True)
     _dispatch(client, c)
-    db.get(Order, cancelled["id_order"]).state = OrderState.CANCELLED
+    mark_cancelled(db, cancelled["id_order"])
     db.commit()
 
     body = _summary(client)

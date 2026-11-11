@@ -1,6 +1,9 @@
 """Utilidades compartidas por los tests."""
 
+from app.models.coreModule.order import Order
 from app.models.coreModule.product import Product
+from app.utils.enums.cancel_reason import CancelReason
+from app.utils.enums.order_state import OrderState
 
 API = "/api/v1"
 
@@ -12,6 +15,15 @@ def item(product: Product, cant: int, unit_price: str | None = None) -> dict:
         "cant": cant,
         "unit_price": unit_price or str(product.base_price),
     }
+
+
+def mark_cancelled(db, id_order: int) -> Order:
+    """Cancela un pedido directo en la BD (sin commit). Todo pedido cancelado
+    lleva motivo: lo exige chk_order_cancel_reason."""
+    order = db.get(Order, id_order)
+    order.state = OrderState.CANCELLED
+    order.cancel_reason = CancelReason.OTHER
+    return order
 
 
 class FakeSheetsWriter:

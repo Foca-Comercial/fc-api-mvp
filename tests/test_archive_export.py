@@ -14,9 +14,8 @@ from app.models.coreModule.monthly_archive import MonthlyArchive
 from app.models.coreModule.order import Order
 from app.services.coreModule.archive_export import HEADER, MONEY_COLUMNS
 from app.utils.enums.archive_status import ArchiveStatus
-from app.utils.enums.order_state import OrderState
 from app.utils.exceptions.business_exceptions import ExternalServiceError
-from tests.helpers import API, item
+from tests.helpers import API, item, mark_cancelled
 
 SHEET_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abc"
 
@@ -43,7 +42,7 @@ def test_exporta_una_fila_por_producto_y_registra_la_bitacora(
         id_user_vehicle=data.user_vehicle.id_user_vehicle,
     )
     cancelled = create_order(items=[item(p0, 1)])
-    db.get(Order, cancelled["id_order"]).state = OrderState.CANCELLED
+    mark_cancelled(db, cancelled["id_order"])
     db.commit()
 
     response = _export(admin, period)

@@ -9,8 +9,7 @@ from app.models.coreModule.monthly_archive import MonthlyArchive
 from app.models.coreModule.order import Order
 from app.services.coreModule.archive_service import add_months, first_retained_month
 from app.utils.enums.archive_status import ArchiveStatus
-from app.utils.enums.order_state import OrderState
-from tests.helpers import API
+from tests.helpers import API, mark_cancelled
 
 URL = f"{API}/archive/months"
 SHEET_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abc"
@@ -96,7 +95,7 @@ def test_mes_viejo_con_dias_sin_cierre_no_se_purga(admin, db, create_order):
 def test_ventas_sin_cancelados(admin, db, create_order):
     kept = create_order()
     cancelled = create_order()
-    db.get(Order, cancelled["id_order"]).state = OrderState.CANCELLED
+    mark_cancelled(db, cancelled["id_order"])
     db.commit()
 
     row = _months(admin)[_label(today_bogota())]

@@ -8,8 +8,7 @@ import pytest
 from app.core.timezone import BOGOTA_TZ, today_bogota
 from app.models.coreModule.order import Order
 from app.models.parametersModule.route import Route
-from app.utils.enums.order_state import OrderState
-from tests.helpers import API, item
+from tests.helpers import API, item, mark_cancelled
 
 URL = f"{API}/orders/history"
 
@@ -144,7 +143,7 @@ def test_busqueda_por_cliente_o_numero_de_pedido(client, create_order, data):
 def test_ventas_del_filtro_excluyen_cancelados(client, create_order, db, data):
     kept = create_order(items=[item(data.products[0], 1)])  # 3000
     cancelled = create_order(items=[item(data.products[2], 1)])  # 8000
-    db.get(Order, cancelled["id_order"]).state = OrderState.CANCELLED
+    mark_cancelled(db, cancelled["id_order"])
     db.commit()
 
     body = client.get(URL).json()
