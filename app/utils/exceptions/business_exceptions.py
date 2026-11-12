@@ -12,11 +12,15 @@ class BusinessError(Exception):
         *,
         code: str | None = None,
         field: str | None = None,
+        details: list[dict[str, Any]] | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.code = code or self.default_code
         self.field = field
+        # Detalle por elemento cuando el error abarca varios (p. ej. qué pedidos
+        # de un despacho múltiple fallaron y por qué). Solo viaja si existe.
+        self.details = details
 
 
 class EntityNotFoundError(BusinessError):

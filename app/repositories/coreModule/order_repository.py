@@ -58,20 +58,42 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
         )
         return {row.id_client: row.id_order for row in db.execute(stmt).all()}
 
+    # Varios pedidos bloqueados (SELECT ... FOR UPDATE) hasta el commit. Se bloquean
+    # en orden de id_order para que dos despachos simultáneos no se interbloqueen.
+    def get_many_for_update(self, db: Session, ids: list[int]) -> list[Order]:
+        stmt = (
+            select(Order)
+            .where(Order.id_order.in_(ids))
+            .order_by(Order.id_order)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return list(db.scalars(stmt).all())
+
     # Tabla principal: pedidos del día de entrega por gestionar (pendientes y cancelados)
-    def get_daily_summary(self, db: Session, target_date: date) -> list[tuple]:
+    def get_daily_summary(
+        self, db: Session, target_date: date, id_route: int | None = None
+    ) -> list[tuple]:
         return self._summary_by_states(
-            db, target_date, (OrderState.PENDING, OrderState.CANCELLED)
+            db, target_date, (OrderState.PENDING, OrderState.CANCELLED), id_route
         )
 
     # Vista de despachados: pedidos del día que ya salieron (despachados y entregados)
-    def get_dispatched_summary(self, db: Session, target_date: date) -> list[tuple]:
+    def get_dispatched_summary(
+        self, db: Session, target_date: date, id_route: int | None = None
+    ) -> list[tuple]:
         return self._summary_by_states(
-            db, target_date, (OrderState.DISPATCHED, OrderState.DELIVERED)
+            db, target_date, (OrderState.DISPATCHED, OrderState.DELIVERED), id_route
         )
 
+    # `id_route`: solo los pedidos generados desde esa ruta (un pedido individual
+    # del mismo cliente tiene id_route nulo y no entra)
     def _summary_by_states(
-        self, db: Session, target_date: date, states: tuple[OrderState, ...]
+        self,
+        db: Session,
+        target_date: date,
+        states: tuple[OrderState, ...],
+        id_route: int | None = None,
     ) -> list[tuple]:
         # creation_datetime es TIMESTAMPTZ: se convierte a hora local de Bogotá
         # antes de extraer la hora, sin depender de la zona de la sesión.
@@ -91,6 +113,11 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
                 (Person.name + " " + Person.last_name).label(
                     "driver_name"
                 ),  # Nombre concatenado separado del código
+                Order.id_route,
+                Route.name.label("route_name"),
+                Order.payment_method,
+                Order.invoice_type,
+                Order.has_receipt.label("has_receipt"),
             )
             .join(Client, Order.id_client == Client.id_client)
             .join(Neighborhood, Client.id_neighborhood == Neighborhood.id_neighborhood)
@@ -103,6 +130,7 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
             .outerjoin(UserRole, UserVehicle.id_user_role == UserRole.id_user_role)
             .outerjoin(User, UserRole.id_user == User.id_user)
             .outerjoin(Person, User.id_person == Person.id_person)
+            .outerjoin(Route, Order.id_route == Route.id_route)
             .where(
                 # 1. Filtrar solo los del día de entrega indicado (por defecto hoy)
                 Order.delivery_date == target_date,
@@ -116,10 +144,13 @@ class RepositoryOrder(BaseRepository[Order, OrderCreate, OrderUpdate]):
                 UserVehicle.code,
                 Person.name,
                 Person.last_name,
+                Route.name,
             )
             # 3. Ordenar ascendente: el más antiguo arriba, el último registrado al final
             .order_by(Order.creation_datetime.asc())
         )
+        if id_route is not None:
+            stmt = stmt.where(Order.id_route == id_route)
         return list(db.execute(stmt).all())
 
     # ------------------------------------------------------------------

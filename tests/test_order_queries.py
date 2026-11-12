@@ -1,8 +1,9 @@
 """Consultas de pedidos para la UI: detalle, comprobante PDF y dashboards."""
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 
 from app.models.coreModule.order import Order
+from app.models.parametersModule.route import Route
 from tests.helpers import API
 
 # --- Detalle y comprobante (regresión bug 1) --------------------------------------
@@ -126,3 +127,62 @@ def test_dashboard_incluye_hora_estimada(client, create_order):
     row = next(r for r in rows if r["id_order"] == order["id_order"])
 
     assert row["estimated_delivery"] == "14:30:00"
+
+
+# --- Tablero: ruta, pago, factura y CD (cambio final B6) -------------------------------
+
+
+def _summary_row(client, id_order: int, path: str = "dashboard-summary") -> dict:
+    rows = client.get(f"{API}/orders/{path}").json()
+    return next(r for r in rows if r["id_order"] == id_order)
+
+
+def _route(db) -> Route:
+    route = Route(name="RUTA TABLERO", days_week=[1], departure_time=time(6, 0))
+    db.add(route)
+    db.flush()
+    return route
+
+
+def test_dashboard_trae_ruta_pago_factura_y_cd(client, create_order, db):
+    route = _route(db)
+    from_route = create_order()
+    db.get(Order, from_route["id_order"]).id_route = route.id_route
+    db.flush()
+    transfer = create_order(payment_method="TRANSFER")
+
+    row = _summary_row(client, from_route["id_order"])
+    assert row["id_route"] == route.id_route
+    assert row["route_name"] == "RUTA TABLERO"
+    assert row["payment_method"] == "CASH"
+    assert row["invoice_type"] == "POS"
+    assert row["has_receipt"] is True
+
+    row = _summary_row(client, transfer["id_order"])
+    assert row["id_route"] is None
+    assert row["route_name"] is None
+    assert row["payment_method"] == "TRANSFER"
+    assert row["has_receipt"] is False
+
+
+def test_despachados_traen_los_mismos_campos(client, create_order):
+    order = create_order(invoice_type="POS", payment_method="CREDIT")
+    client.post(f"{API}/orders/{order['id_order']}/dispatch")
+
+    row = _summary_row(client, order["id_order"], "dispatched-summary")
+
+    assert row["payment_method"] == "CREDIT"
+    assert row["has_receipt"] is False
+
+
+def test_dashboard_filtra_por_ruta(client, create_order, db):
+    route = _route(db)
+    from_route = create_order()
+    db.get(Order, from_route["id_order"]).id_route = route.id_route
+    db.flush()
+    individual = create_order()
+
+    filtered = client.get(f"{API}/orders/dashboard-summary?id_route={route.id_route}")
+
+    assert _ids(filtered) == {from_route["id_order"]}
+    assert individual["id_order"] in _ids(client.get(f"{API}/orders/dashboard-summary"))

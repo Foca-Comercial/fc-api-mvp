@@ -751,6 +751,9 @@ no se registra explícitamente), devolviendo siempre el mismo formato:
 ```json
 {"detail": "...", "code": "...", "field": null}
 ```
+Cuando el error abarca varios elementos, el `BusinessError` lleva `details` (lista de
+objetos) y la respuesta agrega esa clave; si no, no aparece. Hoy solo lo usa el despacho
+múltiple (qué pedidos fallaron y por qué).
 
 Un segundo handler captura `IntegrityError` de SQLAlchemy (violaciones de constraint a nivel
 de BD que se escapan de las validaciones de negocio) y las traduce según el código SQLSTATE
@@ -926,6 +929,11 @@ datos de un cliente existente en el flujo de registro de pedido. Solo devuelve c
   toma la fecha de hoy en Bogotá (`today_bogota`); admite días futuros para ver los
   pedidos programados. El filtro es `delivery_date = target_date`; la hora mostrada
   (`creation_time`) sigue siendo la de creación, convertida a hora de Bogotá en SQL.
+  Cada fila trae además `id_route` y `route_name` (ruta de la que se generó; `null` en un
+  pedido individual), `payment_method`, `invoice_type` y `has_receipt`. Filtro opcional
+  `id_route`: solo los pedidos generados desde esa ruta (un pedido individual del mismo
+  cliente no entra), así el tablero distingue los de una ruta sin guardar nada en el
+  navegador.
 - **`GET /orders/{id}/details`** (`GESTOR_COMERCIAL`): detalle completo para el modal —
   items (con `id_order_detail`, para editarlos luego vía `PUT /items-order`), cliente
   (con su `id_client`, para pedir el catálogo con sus precios pactados al editar),
@@ -1290,7 +1298,7 @@ PENDING ──(/dispatch)──> DISPATCHED ──(/deliver)──> DELIVERED
    │                          │
    └──────── (reasignar conductor: PATCH, mientras no sea estado final) ────────┘
 
-CANCELLED es estado terminal alcanzable desde los anteriores (gestión pendiente de endpoint dedicado)
+PENDING / DISPATCHED ──(/cancel, con motivo)──> CANCELLED (terminal; DELIVERED no se cancela)
 ```
 
 - **`PATCH /orders/{id}`** (`GESTOR_COMERCIAL`): PATCH parcial, solo se modifica lo enviado.
@@ -1309,26 +1317,49 @@ CANCELLED es estado terminal alcanzable desde los anteriores (gestión pendiente
   `DISPATCHED`, registra `dispatch_time` (hora de Bogotá). Rechaza (422 `ORDER_SCHEDULED`)
   un pedido programado para un día futuro. No valida que haya conductor
   asignado — decisión de negocio explícita del cliente (empresa).
+- **`POST /orders/dispatch-batch`** (`GESTOR_COMERCIAL`): despacho múltiple con
+  `{"ids": [...]}` (1 a 100, sin repetidos). Bloquea todos los pedidos con `FOR UPDATE` en
+  orden de `id_order` (dos despachos simultáneos no se interbloquean), valida cada uno con la
+  misma regla del despacho individual (`OrderService._ensure_dispatchable`: `PENDING` y no
+  programado a futuro) y aplica **todo o nada**: si alguno falla responde 422
+  `ORDER_BATCH_NOT_DISPATCHABLE` con `details` = `[{id_order, purchase_order, reason}]` y no
+  despacha ninguno. Todos reciben el mismo `dispatch_time`; responde
+  `{"dispatched": n, "orders": [...]}`. Que sean de una sola ruta y un solo domiciliario lo
+  resuelve el frontend al filtrar. Los pedidos sin CD se despachan igual y no hay impresión
+  múltiple (los CD se sacan uno por uno).
+- **`POST /orders/{id}/cancel`** (`GESTOR_COMERCIAL`): `{"cancel_reason": "CLIENT_ABSENT",
+  "cancel_note": "..."}` (motivo de `CancelReason`, nota opcional, máx. 300). Solo `PENDING`
+  o `DISPATCHED`; si no, 422 `ORDER_NOT_CANCELLABLE`. Guarda `cancel_reason`, `cancel_note`,
+  `cancelled_at` e `id_user_canceller` (usuario autenticado). No borra nada: conserva PO,
+  productos, `id_route` y `dispatch_time` (con valor = se canceló después de despachar, lo
+  que usa el listado de cancelados del cierre). Un pedido de ruta cancelado se puede volver a
+  generar desde la ruta; si el día ya tenía cierre exportado, la huella lo marca
+  desactualizado.
 - **`GET /orders/{id}/receipt`** (`GESTOR_COMERCIAL`): genera el
   comprobante PDF de despacho (`PdfService.generate_dispatch_receipt`, formato tirilla 80mm
-  con alto dinámico según cantidad de items). Separado del endpoint de despacho para permitir
-  **reimpresión** sin reejecutar la transición de estado — si el pedido no tiene
-  `dispatch_time`, rechaza con 422 antes de intentar generar nada. Fechas y horas impresas
-  en hora de Bogotá; si no hay conductor imprime "SIN ASIGNAR". No incluye la dirección de
-  entrega (decisión explícita: el domiciliario no la necesita impresa).
+  con alto dinámico). Separado del endpoint de despacho para permitir **reimpresión** sin
+  reejecutar la transición de estado. Solo existe para pedidos POS + efectivo
+  (`has_receipt`; si no, 422 `RECEIPT_NOT_AVAILABLE`) y ya despachados (sin `dispatch_time`,
+  422). Encabezado: Fecha de entrega, Generado (fecha y hora de creación, siempre con fecha
+  por los programados), Hora de despacho y Conductor ("SIN ASIGNAR" si no hay). Sección
+  "DATOS DE ENTREGA" para el domiciliario: cliente, dirección, barrio, zona y teléfono
+  (dirección y teléfono vacíos salen "NO REGISTRA"); los valores largos parten línea. Fechas
+  y horas en hora de Bogotá; usa la misma consulta del detalle.
 - **`POST /orders/{id}/deliver`** (solo `GESTOR_COMERCIAL`): valida `state == DISPATCHED`,
   cambia a `DELIVERED`, registra `delivery_time` (hora de Bogotá). Decisión explícita: por
   ahora confirma la entrega el mismo usuario que gestiona el pedido; roadmap: que el propio
   domiciliario lo ejecute desde una futura app móvil (requeriría validar que el
   `id_user_vehicle` del pedido corresponda al usuario autenticado).
-- **Sin `DELETE /orders/{id}`**: un pedido no se elimina; se cancelará con su propio endpoint.
+- **Sin `DELETE /orders/{id}`**: un pedido no se elimina; se cancela (`POST /orders/{id}/cancel`).
 
 ### Concurrencia — bloqueo de fila en transiciones de estado
 
 Las operaciones que **validan el estado del pedido y luego lo cambian** leen el pedido con
 `OrderService.get_for_update()` (→ `BaseRepository.get_for_update()`, un
 `SELECT ... FOR UPDATE` con `populate_existing=True`): `dispatch_order`, `deliver_order`,
-`sync_items` y el `PATCH` de reasignación de conductor (`OrderService.update`).
+`cancel_order`, `sync_items` y el `PATCH` de reasignación de conductor (`OrderService.update`).
+El despacho múltiple bloquea todos sus pedidos a la vez
+(`RepositoryOrder.get_many_for_update`, en orden de `id_order`).
 
 La fila queda bloqueada hasta el `commit()`/`rollback()` de esa petición. Si llegan dos
 peticiones sobre el mismo pedido, la segunda **espera** y luego valida contra el estado ya

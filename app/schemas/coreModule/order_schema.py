@@ -1,7 +1,7 @@
 from datetime import date, datetime, time
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.coreModule.client_schema import NewClientInput
 from app.schemas.coreModule.order_detail_schema import OrderDetailResponse
@@ -12,6 +12,7 @@ from app.utils.enums.payment_method import PaymentMethod
 from app.utils.schema_types import TrimmedText
 
 OBSERVATIONS_MAX = 500
+CANCEL_NOTE_MAX = 300
 
 
 # Schema Base
@@ -169,8 +170,54 @@ class OrderSummaryResponse(BaseModel):
     driver_code: str | None
     driver_name: str | None
     state: str
+    id_route: int | None = Field(
+        None, description="Ruta de la que se generó (null = pedido individual)"
+    )
+    route_name: str | None = None
+    payment_method: PaymentMethod
+    invoice_type: InvoiceType
+    has_receipt: bool = Field(
+        ..., description="Lleva comprobante de despacho: solo POS + efectivo"
+    )
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# -----------------------------------------------------
+# Cancelación
+# -----------------------------------------------------
+class OrderCancelRequest(BaseModel):
+    cancel_reason: CancelReason = Field(..., description="Motivo de la lista fija")
+    cancel_note: TrimmedText | None = Field(
+        None, max_length=CANCEL_NOTE_MAX, description="Observación opcional"
+    )
+
+
+# -----------------------------------------------------
+# Despacho múltiple
+# -----------------------------------------------------
+DISPATCH_BATCH_MAX = 100
+
+
+class OrderDispatchBatchRequest(BaseModel):
+    ids: list[int] = Field(
+        ...,
+        min_length=1,
+        max_length=DISPATCH_BATCH_MAX,
+        description="Pedidos a despachar juntos (todo o nada)",
+    )
+
+    @field_validator("ids")
+    @classmethod
+    def _no_duplicates(cls, ids: list[int]) -> list[int]:
+        if len(set(ids)) != len(ids):
+            raise ValueError("Hay pedidos repetidos en la selección.")
+        return ids
+
+
+class OrderDispatchBatchResponse(BaseModel):
+    dispatched: int
+    orders: list[OrderResponse]
 
 
 # -----------------------------------------------------

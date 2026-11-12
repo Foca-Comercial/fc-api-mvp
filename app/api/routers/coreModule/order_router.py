@@ -10,8 +10,11 @@ from app.db.database import get_db
 from app.schemas.common.page_schema import SortDirection
 from app.schemas.coreModule.order_history_schema import OrderHistoryPage
 from app.schemas.coreModule.order_schema import (
+    OrderCancelRequest,
     OrderCreateExistingClient,
     OrderCreateNewClient,
+    OrderDispatchBatchRequest,
+    OrderDispatchBatchResponse,
     OrderFullDetailResponse,
     OrderItemsSyncRequest,
     OrderResponse,
@@ -47,9 +50,10 @@ def get_all_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db
 )
 def get_dashboard_summary(
     target_date: date | None = Query(default_factory=today_bogota),  # type: ignore  # noqa: B008
+    id_route: int | None = Query(None, gt=0),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
-    return order_service.get_dashboard_summary(db, target_date)  # type: ignore
+    return order_service.get_dashboard_summary(db, target_date, id_route)  # type: ignore
 
 
 @router.get(
@@ -59,9 +63,10 @@ def get_dashboard_summary(
 )
 def get_dispatched_summary(
     target_date: date | None = Query(default_factory=today_bogota),  # type: ignore  # noqa: B008
+    id_route: int | None = Query(None, gt=0),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
-    return order_service.get_dispatched_summary(db, target_date)  # type: ignore
+    return order_service.get_dispatched_summary(db, target_date, id_route)  # type: ignore
 
 
 # -----------------------------------------------------
@@ -214,6 +219,23 @@ def dispatch_order(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
     return order_service.dispatch_order(db, id_order)
 
 
+# Despachar varios pedidos a la vez (todo o nada)
+@router.post(
+    "/dispatch-batch",
+    response_model=OrderDispatchBatchResponse,
+    roles=["GESTOR_COMERCIAL"],
+)
+def dispatch_orders_batch(
+    body: OrderDispatchBatchRequest,
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    orders = order_service.dispatch_batch(db, body.ids)
+    return OrderDispatchBatchResponse(
+        dispatched=len(orders),
+        orders=[OrderResponse.model_validate(o) for o in orders],
+    )
+
+
 # Generar CD
 @router.get(
     "/{id_order}/receipt",
@@ -228,6 +250,13 @@ def dispatch_order(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
 )
 def get_dispatch_receipt(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
     order = order_service.get(db, id_order)  # chequeo liviano, sin joins pesados
+    if not order.has_receipt:
+        raise BusinessValidationError(
+            "Este pedido no lleva comprobante de despacho: solo los pedidos POS en "
+            "efectivo lo tienen.",
+            field="payment_method",
+            code="RECEIPT_NOT_AVAILABLE",
+        )
     if order.dispatch_time is None:
         raise BusinessValidationError(
             "El pedido aún no ha sido despachado; no hay comprobante para imprimir.",
@@ -243,6 +272,23 @@ def get_dispatch_receipt(id_order: int, db: Session = Depends(get_db)):  # noqa:
         headers={
             "Content-Disposition": f"attachment; filename=CD_{full_order.purchase_order}.pdf"
         },
+    )
+
+
+# Cancelar un pedido con motivo (queda registrado quién y cuándo)
+@router.post(
+    "/{id_order}/cancel",
+    response_model=OrderResponse,
+    roles=["GESTOR_COMERCIAL"],
+)
+def cancel_order(
+    id_order: int,
+    body: OrderCancelRequest,
+    db: Session = Depends(get_db),  # noqa: B008
+    current: CurrentUser = Depends(get_current_user),  # noqa: B008
+):
+    return order_service.cancel_order(
+        db, id_order, body, id_user=current.user.id_user
     )
 
 
@@ -288,5 +334,4 @@ def update_order(
     return order_service.update(db, id=order_id, obj_in=order_in)
 
 
-# Sin DELETE: un pedido no se elimina, se cancela (transición a CANCELLED,
-# pendiente de implementar con su propio endpoint).
+# Sin DELETE: un pedido no se elimina, se cancela (POST /{id_order}/cancel).

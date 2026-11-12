@@ -25,6 +25,7 @@ from app.schemas.coreModule.order_history_schema import (
     OrderHistoryRow,
 )
 from app.schemas.coreModule.order_schema import (
+    OrderCancelRequest,
     OrderCreate,
     OrderCreateExistingClient,
     OrderCreateNewClient,
@@ -67,16 +68,18 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
 
     # Tabla principal: pedidos del día en PENDING y CANCELLED
     def get_dashboard_summary(
-        self, db: Session, target_date: date
+        self, db: Session, target_date: date, id_route: int | None = None
     ) -> list[OrderSummaryResponse]:
-        return self._to_summary(order_repository.get_daily_summary(db, target_date))
+        return self._to_summary(
+            order_repository.get_daily_summary(db, target_date, id_route)
+        )
 
     # Vista de despachados: pedidos del día en DISPATCHED y DELIVERED
     def get_dispatched_summary(
-        self, db: Session, target_date: date
+        self, db: Session, target_date: date, id_route: int | None = None
     ) -> list[OrderSummaryResponse]:
         return self._to_summary(
-            order_repository.get_dispatched_summary(db, target_date)
+            order_repository.get_dispatched_summary(db, target_date, id_route)
         )
 
     @staticmethod
@@ -94,6 +97,11 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 driver_code=row.driver_code,
                 driver_name=row.driver_name,
                 state=row.state,
+                id_route=row.id_route,
+                route_name=row.route_name,
+                payment_method=row.payment_method,
+                invoice_type=row.invoice_type,
+                has_receipt=row.has_receipt,
             )
             for row in rows
         ]
@@ -618,7 +626,64 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
     # Marcar pdido como despachado
     def dispatch_order(self, db: Session, id_order: int) -> Order:
         order = self.get_for_update(db, id_order)
+        self._ensure_dispatchable(order)
 
+        order.state = OrderState.DISPATCHED
+        order.dispatch_time = datetime.now(BOGOTA_TZ).time()
+
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+        return order
+
+    # Despacho múltiple (p. ej. los pedidos de una ruta con un mismo domiciliario).
+    # Todo o nada: si algún pedido no se puede despachar no se despacha ninguno y
+    # el error trae cada PO con su motivo. Que sean de una sola ruta y un solo
+    # domiciliario lo resuelve el frontend al filtrar.
+    def dispatch_batch(self, db: Session, ids: list[int]) -> list[Order]:
+        orders = order_repository.get_many_for_update(db, ids)
+        found = {order.id_order for order in orders}
+        failures = [
+            {
+                "id_order": id_order,
+                "purchase_order": None,
+                "reason": "El pedido no existe.",
+            }
+            for id_order in sorted(set(ids) - found)
+        ]
+        for order in orders:
+            try:
+                self._ensure_dispatchable(order)
+            except BusinessValidationError as exc:
+                failures.append(
+                    {
+                        "id_order": order.id_order,
+                        "purchase_order": order.purchase_order,
+                        "reason": exc.message,
+                    }
+                )
+        if failures:
+            raise BusinessValidationError(
+                "No se despachó ningún pedido: hay pedidos que no se pueden "
+                "despachar.",
+                field="ids",
+                code="ORDER_BATCH_NOT_DISPATCHABLE",
+                details=failures,
+            )
+
+        dispatch_time = datetime.now(BOGOTA_TZ).time()
+        for order in orders:
+            order.state = OrderState.DISPATCHED
+            order.dispatch_time = dispatch_time
+        db.commit()
+        for order in orders:
+            db.refresh(order)
+        return orders
+
+    # Regla común del despacho individual y el múltiple: solo PENDING y no
+    # programado para un día posterior
+    @staticmethod
+    def _ensure_dispatchable(order: Order) -> None:
         if order.state != OrderState.PENDING:
             raise BusinessValidationError(
                 f"Solo se pueden despachar pedidos en estado 'PENDING'. "
@@ -635,10 +700,28 @@ class OrderService(BaseService[Order, OrderCreate, OrderUpdate]):
                 code="ORDER_SCHEDULED",
             )
 
-        order.state = OrderState.DISPATCHED
-        order.dispatch_time = datetime.now(BOGOTA_TZ).time()
+    # Cancelar un pedido PENDING o DISPATCHED (un DELIVERED ya no se cancela). No
+    # borra nada: conserva PO, productos, ruta y dispatch_time; este último indica
+    # que se canceló después de despachar (listado informativo del cierre).
+    def cancel_order(
+        self, db: Session, id_order: int, data: OrderCancelRequest, id_user: int
+    ) -> Order:
+        order = self.get_for_update(db, id_order)
 
-        db.add(order)
+        if order.state not in (OrderState.PENDING, OrderState.DISPATCHED):
+            raise BusinessValidationError(
+                "Solo se pueden cancelar pedidos pendientes o despachados. "
+                f"Estado actual: '{order.state.value}'.",
+                field="state",
+                code="ORDER_NOT_CANCELLABLE",
+            )
+
+        order.state = OrderState.CANCELLED
+        order.cancel_reason = data.cancel_reason
+        order.cancel_note = data.cancel_note
+        order.cancelled_at = datetime.now(BOGOTA_TZ)
+        order.id_user_canceller = id_user
+
         db.commit()
         db.refresh(order)
         return order
