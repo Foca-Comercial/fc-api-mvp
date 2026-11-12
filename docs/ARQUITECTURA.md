@@ -82,7 +82,8 @@ app/
 │   ├── pdf/                      # PdfService (comprobantes de despacho) + assets/logo
 │   └── <mismos módulos que models/>   # coreModule incluye además:
 │       # archive_export.py (tabla del mes para Sheets), sheets_writer.py (SheetsWriter /
-│       # GoogleSheetsWriter) y closure_export.py (Excel del cierre para Siigo)
+│       # GoogleSheetsWriter), closure_consolidation.py (motor del cierre, sin BD) y
+│       # closure_export.py (Excel del cierre: 3 hojas)
 └── utils/
     ├── schema_types.py               # UpperText / LowerText (strip + cambio de caja)
     ├── exceptions/
@@ -222,14 +223,25 @@ Piezas (una por capa):
 
 | Capa | Pieza | Qué hace |
 |---|---|---|
-| Router | `params: PageParams = Depends(get_page_params)` (`api/dependencies.py`) | Valida `page` (≥ 1) y `page_size` (1–200, por defecto 25) |
-| Repository | `paginate(db, stmt, params, scalars=..., count_stmt=...)` (`repositories/pagination.py`) | Cuenta el total del filtro y trae solo la página (`OFFSET`/`LIMIT`) |
+| Router | `params: PageParams = Depends(get_page_params)` (`api/dependencies.py`) | Valida `page` (≥ 1), `page_size` (1–200, por defecto 25), `sort_by` (solo `a-z` y `_`) y `sort_dir` (`asc` / `desc`) |
+| Repository | `order_clause(params, campos, default=..., tiebreak=PK)` y `paginate(db, stmt, params, scalars=..., count_stmt=...)` (`repositories/pagination.py`) | Arma el `ORDER BY` pedido y cuenta el total del filtro y trae solo la página (`OFFSET`/`LIMIT`) |
 | Service | `Page[Row].build(items, total=..., params=...)` (`schemas/common/page_schema.py`) | Arma la respuesta y calcula `pages` |
 
 ```python
 # repositorio
 def get_admin_page(self, db, filters, params):
-    stmt = select(...).where(...).order_by(Client.name, Client.id_client)
+    stmt = (
+        select(...)
+        .where(...)
+        .order_by(
+            *order_clause(
+                params,
+                {"name": Client.name, "routes_count": "routes_count"},  # str = alias
+                default=[Client.name],
+                tiebreak=Client.id_client,
+            )
+        )
+    )
     return paginate(db, stmt, params)
 
 # servicio
@@ -248,8 +260,23 @@ def list_clients_admin(params: PageParams = Depends(get_page_params), ...): ...
   allá del final (responde `items: []` con el `total` real, y el frontend vuelve a la
   última página).
 - `count_stmt` permite contar sin los joins que solo aportan columnas de visualización.
+- **Orden en el servidor:** `sort_by` es el nombre de un campo ordenable que cada
+  repositorio declara (lista blanca: el texto recibido nunca se vuelve SQL; uno que no esté
+  → 422 `INVALID_SORT_FIELD` con la lista de válidos). El valor de un campo es una columna,
+  el alias (str) de una columna calculada del `SELECT` o una tupla para ordenar por varias.
+  Nulos al final y la PK como desempate, en la misma dirección. Sin `sort_by`, el orden por
+  defecto del listado.
+
+  | Listado | `sort_by` |
+  |---|---|
+  | `/clients/admin` | `name`, `phone`, `neighborhood_name`, `zone_name`, `active`, `requires_electronic_invoice`, `special_prices_count`, `routes_count` |
+  | `/products/admin` | `code`, `name`, `base_price`, `active`, `special_prices_count`, `in_use` |
+  | `/drivers/admin` | `name` (nombre + apellido), `phone`, `username`, `active`, `assignments_count` |
+  | `/vehicles/admin` | `name`, `active`, `assignments_count` |
+  | `/routes/admin` | `name`, `departure_time`, `active`, `clients_count` |
+  | `/orders/history` | `date` (por defecto), `purchase_order`, `client_name`, `zone_name`, `route_name`, `total_quantity`, `total`, `driver_name`, `state`, `payment_method`, `invoice_type` |
 - El histórico (`OrderHistoryPage`) es anterior y conserva su propio formato (agrega
-  `date_from`, `date_to` y `total_sales`).
+  `date_from`, `date_to` y `total_sales`), pero usa el mismo `order_clause`.
 
 ### Validaciones declarativas (`services/validation.py`)
 
@@ -404,7 +431,13 @@ de zonas horarias en Windows por defecto).
 ### Enums — dos patrones distintos según cómo se persiste el valor
 
 Todos los enums viven centralizados en **`app/utils/enums/`** (`archive_status.py`,
-`day_week.py`, `delete_type.py`, `order_state.py`); los modelos y schemas los importan desde ahí.
+`cancel_reason.py`, `day_week.py`, `delete_type.py`, `invoice_type.py`, `order_state.py`,
+`payment_method.py`); los modelos y schemas los importan desde ahí.
+
+`PaymentMethod`, `InvoiceType` y `CancelReason` (pedido) también son de texto, pero con el
+`CHECK` de valores **declarado explícito** en `__table_args__` y en la migración
+(`create_constraint=False` en el `SQLEnum`): desde SQLAlchemy 1.4 el `Enum` no crea el
+`CHECK` por defecto, así que no se confía en el autogenerado.
 
 **A) Enum de texto** (ej. `OrderState`):
 ```python
@@ -524,6 +557,7 @@ errores reales.
 - `UpperText`: nombres y direcciones de clientes (`ClientBase` y también `NewClientInput`,
   el cliente que se crea desde el flujo de pedido — ambos caminos guardan igual).
 - `LowerText`: `username`.
+- `TrimmedText`: texto libre sin cambio de caja (observación del pedido, notas).
 
 Como exigen al menos un carácter, un campo opcional sin valor se envía como `null` u
 omitido, no como `""`.
@@ -717,6 +751,9 @@ no se registra explícitamente), devolviendo siempre el mismo formato:
 ```json
 {"detail": "...", "code": "...", "field": null}
 ```
+Cuando el error abarca varios elementos, el `BusinessError` lleva `details` (lista de
+objetos) y la respuesta agrega esa clave; si no, no aparece. Hoy solo lo usa el despacho
+múltiple (qué pedidos fallaron y por qué).
 
 Un segundo handler captura `IntegrityError` de SQLAlchemy (violaciones de constraint a nivel
 de BD que se escapan de las validaciones de negocio) y las traduce según el código SQLSTATE
@@ -799,6 +836,23 @@ renglones del pedido (`_ensure_no_duplicate_products` → 422 con código
 (`current.user.id_user`), nunca del body — ya disponible porque `get_current_user` carga el
 `User` completo desde el JWT.
 
+**Método de pago, tipo de factura y observación** (cambios finales, migración
+`d4f6a8c2e917`, que también agrega la cancelación y la auditoría del pedido, la marca de
+factura electrónica del cliente y la huella del cierre): los tres flujos de
+creación reciben `payment_method` (`CASH` | `TRANSFER` | `CREDIT`, por defecto `CASH`),
+`invoice_type` (`POS` | `ELECTRONIC`) y `observations` (texto libre, máx. 500).
+
+- `invoice_type` sin valor sale del cliente: `ELECTRONIC` si `client.requires_electronic_invoice`,
+  si no `POS`. Se **copia al pedido**: cambiar la marca del cliente no altera los pedidos ya
+  tomados. Un cliente temporal solo admite `POS` (422 `ELECTRONIC_INVOICE_NOT_ALLOWED`; la BD
+  lo respalda con `chk_client_electronic_invoice_registered`).
+- En pedidos por ruta van por cliente (efectivo por defecto); la plantilla trae
+  `requires_electronic_invoice` de cada cliente.
+- **Regla única "lleva CD":** `Order.has_receipt` (hybrid property) = POS + efectivo. Sirve
+  en Python y en SQL (`select(Order.has_receipt)`, `.where(Order.has_receipt)`); la usan el
+  comprobante, el tablero, el detalle y el cierre. `OrderResponse` la expone.
+- Crédito es solo informativo: el sistema no lleva cartera ni saldos.
+
 **`unit_price` (decisión explícita del MVP):** se acepta el precio unitario que envía el
 frontend (precargado desde el catálogo y editable por el vendedor), sin compararlo contra
 `effective_price` ni auditar diferencias. Validar y auditar desviaciones de precio queda
@@ -833,6 +887,11 @@ exige producto activo (422 `REFERENCE_INACTIVE`). `GET /orders/{id}/details` tra
 que la creación, aplicada antes de modificar nada). Se valida en el service y no con un
 `UniqueConstraint(id_order, id_product)` en BD, porque la sincronización borra y reescribe
 renglones dentro de la misma transacción.
+
+**Auditoría de la edición:** si la lista final realmente cambia (cantidad, precio, producto
+agregado o quitado), `sync_items` guarda `items_updated_at` e `id_user_items_updater`
+(usuario autenticado, que el router le pasa). Reenviar la misma lista no cuenta como
+edición; el `PATCH` y la cancelación tampoco tocan estos campos.
 
 **`/orders_details` es solo lectura** (`GET /` y `GET /{id}`, ADMIN): los detalles se
 crean, editan y eliminan únicamente por este endpoint de sincronización, que valida el
@@ -870,6 +929,11 @@ datos de un cliente existente en el flujo de registro de pedido. Solo devuelve c
   toma la fecha de hoy en Bogotá (`today_bogota`); admite días futuros para ver los
   pedidos programados. El filtro es `delivery_date = target_date`; la hora mostrada
   (`creation_time`) sigue siendo la de creación, convertida a hora de Bogotá en SQL.
+  Cada fila trae además `id_route` y `route_name` (ruta de la que se generó; `null` en un
+  pedido individual), `payment_method`, `invoice_type` y `has_receipt`. Filtro opcional
+  `id_route`: solo los pedidos generados desde esa ruta (un pedido individual del mismo
+  cliente no entra), así el tablero distingue los de una ruta sin guardar nada en el
+  navegador.
 - **`GET /orders/{id}/details`** (`GESTOR_COMERCIAL`): detalle completo para el modal —
   items (con `id_order_detail`, para editarlos luego vía `PUT /items-order`), cliente
   (con su `id_client`, para pedir el catálogo con sus precios pactados al editar),
@@ -877,6 +941,13 @@ datos de un cliente existente en el flujo de registro de pedido. Solo devuelve c
   `null` si el pedido no tiene conductor asignado (el `id_user_vehicle` permite preseleccionar
   el conductor al editar). Incluye `dispatch_time` y `delivery_time` (`null` mientras no
   aplique). Es la misma consulta que alimenta el PDF.
+  Además (cambios finales): `creation_datetime` en hora de Bogotá, `creation_date` y
+  `creation_time` (`HH:MM`) junto a `delivery_date` (así un pedido programado no se
+  confunde), `taker_name` (quién lo registró), `items_updater_name` e `items_updated_at`
+  (última edición de productos; `null` si nunca), `payment_method`, `invoice_type`,
+  `has_receipt`, `observations`, `id_route` y `route_name`, y si está cancelado
+  `cancel_reason`, `cancel_note`, `cancelled_at` y `canceller_name`. Cada usuario del
+  pedido se carga con su propio `joinedload` (SQLAlchemy los alias distinto).
 
 ### Vista de Rutas
 
@@ -934,62 +1005,100 @@ Flujo plantilla → formulario → POST (`GESTOR_COMERCIAL`):
 
 ### Vista Histórico
 
-**`GET /orders/history`** (`GESTOR_COMERCIAL`): listado paginado de pedidos, del más
-reciente al más antiguo.
+**`GET /orders/history`** (`GESTOR_COMERCIAL`): listado paginado de pedidos, **del más
+antiguo al más nuevo** por defecto (día de entrega y hora en que se tomó); `sort_by` /
+`sort_dir` lo cambian (ver "Listados paginados en el servidor").
 
 - Filtros: `date_from` / `date_to` (por defecto, del 1 del mes anterior a hoy: lo que
   retiene la BD; ambos extremos incluidos; 422 `INVALID_DATE_RANGE` si están invertidos),
-  `state`, `id_route`, `id_user_vehicle` y `search` (nombre del cliente o N.° de pedido
-  exacto). Paginación `page` / `page_size` (1–200).
+  `state`, `id_route`, `id_user_vehicle`, `payment_method`, `invoice_type` y `search`
+  (nombre del cliente o N.° de pedido exacto). Paginación `page` / `page_size` (1–200).
 - Cada fila: fecha y hora (Bogotá), N.° de pedido, cliente, zona, ruta, productos y
-  cantidad, total, conductor y estado.
+  cantidad, total, conductor, estado, método de pago y tipo de factura. El "N°" de la tabla
+  es un contador de fila del frontend (`(page - 1) × page_size + posición`).
 - Respuesta con `total`, `pages` y `total_sales` del filtro completo (sin cancelados).
 - Los productos se agregan en una subconsulta por pedido, así la paginación es sobre
   pedidos y no sobre renglones de detalle.
 
-### Vista Cierre — factura global por vendedor y exportación a Siigo
+### Vista Cierre — facturación y cuadre de caja por vendedor
 
-El cierre del día consolida los pedidos **despachados y entregados** de un día (su
-`delivery_date`, el día de entrega) en una factura global por vendedor (`user_vehicle`).
+El cierre del día toma los pedidos **despachados y entregados** de un día (su
+`delivery_date`) y, por vendedor (`user_vehicle`), arma tres cosas: la **factura global**
+para Siigo, las **otras facturas** que se hacen aparte y el **cuadre de caja** del GESTOR.
 Reglas:
 
-- `PENDING` y `CANCELLED` no se facturan; solo aparecen en las cards.
-- Los pedidos **sin conductor** se suman al vendedor por defecto
-  (`DEFAULT_SELLER_CODE`, `"01"`). La asignación ocurre solo en el cierre: el pedido no se
+- `PENDING` y `CANCELLED` no se facturan; solo aparecen en las cards. Los cancelados
+  **después de despacharse** (`dispatch_time` con valor) salen además en un listado
+  informativo que no suma.
+- Los pedidos **sin conductor** se suman al vendedor por defecto (`DEFAULT_SELLER_CODE`,
+  `"01"`, cuantías menores). La asignación ocurre solo en el cierre: el pedido no se
   modifica. Si hay pedidos sin conductor y ese vendedor no existe → 422
   `DEFAULT_SELLER_MISSING`.
-- Siigo recibe el código del vendedor como **número** (`"01"` → `1`), por eso
-  `user_vehicle.code` exige 2 dígitos al crear/editar (`^\d{2}$`); un código antiguo no
-  numérico responde 422 `INVALID_SELLER_CODE` en el cierre.
+- Siigo recibe el código del vendedor como **número** (`"01"` → `1`); un código no
+  numérico responde 422 `INVALID_SELLER_CODE`.
 - No se puede cerrar una fecha futura (422 `INVALID_CLOSURE_DATE`).
+
+**Categorías.** Cada pedido cae en una de 6 categorías (tipo de factura × método de pago):
+
+| Categoría | Factura global (hoja 1) | Otras facturas (hoja 2) | Efectivo a recibir |
+|---|---|---|---|
+| POS + efectivo | Sí | No | Sí |
+| POS + transferencia / crédito | No | Sí | No |
+| FE + efectivo | No | Sí | Sí |
+| FE + transferencia / crédito | No | Sí | No |
+
+**Motor (`closure_consolidation.py`, sin BD).** `ShiftClosureService.consolidate` carga los
+pedidos facturables del día **con sus renglones en una sola consulta**
+(`get_billable_order_lines`), los agrupa por vendedor y todo lo demás se calcula sobre esos
+mismos objetos (`SellerClosure`, `ClosureOrder`), así el resumen, las 3 hojas y la huella
+cuadran siempre:
+
+- `consolidated_lines`: solo POS + efectivo, un renglón por producto + **precio** (el mismo
+  producto a dos precios queda en dos renglones; 9000 y 9000.00 se suman como el mismo).
+- `other_orders`: el resto, pedido por pedido (POS transferencia, POS crédito, FE efectivo,
+  FE transferencia, FE crédito).
+- `totals_by_category`, `total_sales` y `cash_to_collect` (POS efectivo + FE efectivo).
+- `signature`: **huella** SHA-256 de los pedidos del vendedor (id, estado, pago, factura,
+  total y renglones; independiente del formato del precio y del orden).
 
 Endpoints (`GESTOR_COMERCIAL`), bajo `/shifts_closures`:
 
-- **`GET /shifts_closures/summary?target_date=`**: cards (total del día, pendientes,
-  despachados, entregados, cancelados, vendedores e ingreso facturable) y una fila por
-  vendedor, ordenada por código: productos con cantidad (sumando sus distintos precios),
-  cantidad total, pedidos, `unassigned_orders` (pedidos sin conductor sumados al vendedor
-  por defecto) y total vendido. Por fila, `exported_at` y `export_outdated` (se exportó,
-  pero los pedidos o el total cambiaron después); `exported` resume todo el día.
+- **`GET /shifts_closures/summary?target_date=`**: cards (conteos por estado,
+  `cancelled_after_dispatch`, vendedores, `totals` por categoría, `total_income` y
+  `cash_to_collect`) y una fila por vendedor, ordenada por código: `products`,
+  `total_quantity` y `consolidated_total` de la **factura global**; `orders_count`,
+  `other_orders_count`, `unassigned_orders`, `totals`, `total_sales` (todas las categorías)
+  y `cash_to_collect`. Por fila, `exported_at` y `export_outdated`; `exported` resume todo
+  el día.
 - **`POST /shifts_closures/{fecha}/export`**: descarga `cierre_AAAA-MM-DD.xlsx`
-  (`closure_export.py`). Columnas `Fecha | Cód. vendedor | Vendedor | Cód. producto |
-  Producto | Cantidad | Precio unit. | Subtotal`, un renglón por vendedor + producto +
-  precio, una fila "Total vendedor" por vendedor y "TOTAL DEL DÍA". Formato provisional
-  hasta que Siigo defina su plantilla. 422 `NO_BILLABLE_ORDERS` si el día no tiene pedidos
-  facturables.
+  (`closure_export.py`) con 3 hojas:
+  1. **Consolidado POS**: `Fecha | Cód. vendedor | Vendedor | Cód. producto | Producto |
+     Cantidad | Precio unit. | Subtotal`, "Total vendedor" por vendedor y "TOTAL VENTAS".
+  2. **Otras facturas**: un renglón por producto de cada pedido, con PO, tipo de factura,
+     método de pago, "Cliente factura" (CUANTÍAS MENORES en POS, el cliente en FE) y el
+     cliente real; "Total pedido", "Total vendedor" y "TOTAL OTRAS FACTURAS".
+  3. **Cuadre de caja**: por vendedor, pedidos, las 6 categorías, total vendido y efectivo a
+     recibir, con fila de totales; debajo, "Pedidos despachados y cancelados (no suman)"
+     con motivo, observación, quién canceló y hora.
+
+  Cruces que siempre se cumplen (y prueban los tests): efectivo POS de la hoja 3 = total
+  del vendedor en la hoja 1; las demás columnas = su total en la hoja 2; TOTAL VENTAS +
+  TOTAL OTRAS FACTURAS = total vendido. 422 `NO_BILLABLE_ORDERS` si el día no tiene ningún
+  pedido facturable. Formato provisional hasta que Siigo defina su plantilla.
 
 **Cerrar el día = exportarlo.** No hay otra acción que escriba en `shift_closure`: la
 exportación hace un *upsert* (`ON CONFLICT` sobre `uq_shift_closure_date_vehicle`) de un
-cierre por vendedor y día con `total_orders`, `total_sales`, `exported_siigo=True` y
-`exported_at`, y elimina los cierres de ese día de vendedores que ya no tienen pedidos
-facturables (p. ej. se les reasignó el pedido). Reexportar está permitido y refleja los
-pedidos actuales. El Excel se genera **antes** de escribir en la BD: si falla, no queda
-nada marcado como exportado. El CRUD `/shifts_closures` (`GET /` y `GET /{id}`) es de solo
-lectura para `ADMINISTRADOR`.
+cierre por vendedor y día con `total_orders`, `total_sales`, `signature`,
+`exported_siigo=True` y `exported_at`, y elimina los cierres de ese día de vendedores que
+ya no tienen pedidos facturables. Reexportar está permitido. El Excel se genera **antes** de
+escribir en la BD. El CRUD `/shifts_closures` (`GET /` y `GET /{id}`) es de solo lectura
+para `ADMINISTRADOR`.
 
-La consolidación (`ShiftClosureService.consolidate`) es una sola y la usan el resumen y la
-exportación: renglones agrupados por (vendedor, producto, precio) en SQL y fusión en Python
-de los pedidos sin conductor con los propios del vendedor por defecto.
+**Desactualizado (`_is_outdated`).** Un cierre exportado queda desactualizado si su
+`signature` difiere de la actual: cualquier cambio posterior de estado, pago, factura,
+productos, cantidades, precios o vendedor. Los cierres exportados antes de la huella
+(`signature` nula) se comparan por cantidad de pedidos y total. La misma función la usan el
+resumen y `unclosed_days` (purga y Archivo mensual).
 
 ### Panel de administración (solo `ADMINISTRADOR`)
 
@@ -1000,7 +1109,7 @@ Los listados usan la paginación en el servidor de la sección 3.
 Los temporales (creados desde `/orders/new-client`) no se gestionan aquí; los borra la purga
 mensual.
 
-- **`GET /clients/admin?search=&active=&id_zone=&page=&page_size=`** → `Page[ClientAdminRow]`,
+- **`GET /clients/admin?search=&active=&id_zone=&electronic_invoice=&page=&page_size=`** → `Page[ClientAdminRow]`,
   por nombre (A-Z). `search` busca en el nombre (contiene) o el teléfono (empieza por), con
   los comodines `%` y `_` tratados como texto (`autoescape`). `active` sin valor trae activos
   e inactivos. Cada fila trae barrio, zona, `special_prices_count` y `routes_count`
@@ -1009,6 +1118,10 @@ mensual.
 - **`POST /clients/admin`** (`ClientAdminCreate`): crea el cliente con `is_registered=True`
   (lo fija el servicio; no se expone). Nombre y dirección con `UpperText`, teléfono de 10
   dígitos (`^\d{10}$`) y barrio existente y activo.
+- **Factura electrónica** (`requires_electronic_invoice`, informativo como los precios
+  pactados): se marca al crear o editar (no admite `null`: `REQUIRED_FIELD`), viene en la
+  fila del listado y en `GET /clients/search` (para precargar el tipo de factura del pedido),
+  y se filtra con `electronic_invoice=true|false`.
 - **`PATCH /clients/admin/{id}`** (`ClientAdminUpdate`, parcial): editar, **desactivar**
   (`{"active": false}`) o **reactivar** (`{"active": true}`). Un cliente desactivado deja de
   aparecer al tomar pedidos (búsqueda), en las rutas y en sus plantillas; su historial de
@@ -1147,7 +1260,8 @@ Todo es manual y solo de `ADMINISTRADOR` (`/archive`):
   estar compartido como editor con su `client_email`.
 - **`POST /archive/{AAAA-MM}/export`**: escribe (o reescribe) la pestaña del mes con **una
   fila por producto vendido** de todos los pedidos del mes, en cualquier estado
-  (`archive_export.py`), verifica leyendo de vuelta cuántas filas quedaron y registra la
+  (`archive_export.py`; al final, método de pago, tipo de factura, observación y motivo de
+  cancelación), verifica leyendo de vuelta cuántas filas quedaron y registra la
   bitácora `monthly_archive` como `EXPORTED`. Los pedidos no se borran.
 - **`POST /archive/{AAAA-MM}/purge`**: solo meses fuera de la retención
   (`MONTH_WITHIN_RETENTION`). Reexporta el estado final, verifica y, en **la misma
@@ -1157,7 +1271,10 @@ Todo es manual y solo de `ADMINISTRADOR` (`/archive`):
   verificación fallan, no se borra nada (502). Un mes con días facturables **sin cierre
   exportado o con cambios posteriores a la exportación** se rechaza con 422
   `MONTH_NOT_CLOSED` (lista los días), porque sin los pedidos ya no se podría generar su
-  cierre. Los `shift_closure` no se borran: quedan como registro de lo enviado a Siigo.
+  cierre. Los días los calcula `ShiftClosureService.unclosed_days`: por cada día con pedidos
+  facturables consolida con el mismo motor del cierre y compara la huella, así la purga y
+  la vista Cierre nunca discrepan; un día que no se puede consolidar (p. ej. falta el
+  vendedor por defecto) cuenta como sin cerrar. Los `shift_closure` no se borran: quedan como registro de lo enviado a Siigo.
 - **`GET /archive/`**: bitácora de meses exportados y purgados.
 - **`GET /archive/months`** (vista Archivo mensual del panel): `current_month`,
   `first_retained_month`, `retention_months` y una fila por mes hasta el vigente (del más
@@ -1181,14 +1298,17 @@ PENDING ──(/dispatch)──> DISPATCHED ──(/deliver)──> DELIVERED
    │                          │
    └──────── (reasignar conductor: PATCH, mientras no sea estado final) ────────┘
 
-CANCELLED es estado terminal alcanzable desde los anteriores (gestión pendiente de endpoint dedicado)
+PENDING / DISPATCHED ──(/cancel, con motivo)──> CANCELLED (terminal; DELIVERED no se cancela)
 ```
 
 - **`PATCH /orders/{id}`** (`GESTOR_COMERCIAL`): PATCH parcial, solo se modifica lo enviado.
   Campos editables: `id_user_vehicle` (asignar, reasignar o desasignar conductor; `null`
   desasigna), `estimated_delivery` (hora estimada; `null` la quita) y `delivery_date` (día
   de entrega; no admite `null`, hoy o posterior, máx. 60 días; recibe un consecutivo nuevo
-  del día de destino). Bloqueado por completo
+  del día de destino), y `payment_method`, `invoice_type` y `observations` (editables en
+  `PENDING` y `DISPATCHED`, p. ej. el cliente decide pagar por transferencia al recibir; pago
+  y factura no admiten `null`: `REQUIRED_FIELD`; un cliente temporal no pasa a factura
+  electrónica). Bloqueado por completo
   si el pedido está en `DELIVERED` o `CANCELLED` (estados finales). La hora estimada y el
   día de entrega solo se pueden cambiar en `PENDING` (422 con `field: "estimated_delivery"`
   o `"delivery_date"` si ya fue despachado);
@@ -1197,26 +1317,49 @@ CANCELLED es estado terminal alcanzable desde los anteriores (gestión pendiente
   `DISPATCHED`, registra `dispatch_time` (hora de Bogotá). Rechaza (422 `ORDER_SCHEDULED`)
   un pedido programado para un día futuro. No valida que haya conductor
   asignado — decisión de negocio explícita del cliente (empresa).
+- **`POST /orders/dispatch-batch`** (`GESTOR_COMERCIAL`): despacho múltiple con
+  `{"ids": [...]}` (1 a 100, sin repetidos). Bloquea todos los pedidos con `FOR UPDATE` en
+  orden de `id_order` (dos despachos simultáneos no se interbloquean), valida cada uno con la
+  misma regla del despacho individual (`OrderService._ensure_dispatchable`: `PENDING` y no
+  programado a futuro) y aplica **todo o nada**: si alguno falla responde 422
+  `ORDER_BATCH_NOT_DISPATCHABLE` con `details` = `[{id_order, purchase_order, reason}]` y no
+  despacha ninguno. Todos reciben el mismo `dispatch_time`; responde
+  `{"dispatched": n, "orders": [...]}`. Que sean de una sola ruta y un solo domiciliario lo
+  resuelve el frontend al filtrar. Los pedidos sin CD se despachan igual y no hay impresión
+  múltiple (los CD se sacan uno por uno).
+- **`POST /orders/{id}/cancel`** (`GESTOR_COMERCIAL`): `{"cancel_reason": "CLIENT_ABSENT",
+  "cancel_note": "..."}` (motivo de `CancelReason`, nota opcional, máx. 300). Solo `PENDING`
+  o `DISPATCHED`; si no, 422 `ORDER_NOT_CANCELLABLE`. Guarda `cancel_reason`, `cancel_note`,
+  `cancelled_at` e `id_user_canceller` (usuario autenticado). No borra nada: conserva PO,
+  productos, `id_route` y `dispatch_time` (con valor = se canceló después de despachar, lo
+  que usa el listado de cancelados del cierre). Un pedido de ruta cancelado se puede volver a
+  generar desde la ruta; si el día ya tenía cierre exportado, la huella lo marca
+  desactualizado.
 - **`GET /orders/{id}/receipt`** (`GESTOR_COMERCIAL`): genera el
   comprobante PDF de despacho (`PdfService.generate_dispatch_receipt`, formato tirilla 80mm
-  con alto dinámico según cantidad de items). Separado del endpoint de despacho para permitir
-  **reimpresión** sin reejecutar la transición de estado — si el pedido no tiene
-  `dispatch_time`, rechaza con 422 antes de intentar generar nada. Fechas y horas impresas
-  en hora de Bogotá; si no hay conductor imprime "SIN ASIGNAR". No incluye la dirección de
-  entrega (decisión explícita: el domiciliario no la necesita impresa).
+  con alto dinámico). Separado del endpoint de despacho para permitir **reimpresión** sin
+  reejecutar la transición de estado. Solo existe para pedidos POS + efectivo
+  (`has_receipt`; si no, 422 `RECEIPT_NOT_AVAILABLE`) y ya despachados (sin `dispatch_time`,
+  422). Encabezado: Fecha de entrega, Generado (fecha y hora de creación, siempre con fecha
+  por los programados), Hora de despacho y Conductor ("SIN ASIGNAR" si no hay). Sección
+  "DATOS DE ENTREGA" para el domiciliario: cliente, dirección, barrio, zona y teléfono
+  (dirección y teléfono vacíos salen "NO REGISTRA"); los valores largos parten línea. Fechas
+  y horas en hora de Bogotá; usa la misma consulta del detalle.
 - **`POST /orders/{id}/deliver`** (solo `GESTOR_COMERCIAL`): valida `state == DISPATCHED`,
   cambia a `DELIVERED`, registra `delivery_time` (hora de Bogotá). Decisión explícita: por
   ahora confirma la entrega el mismo usuario que gestiona el pedido; roadmap: que el propio
   domiciliario lo ejecute desde una futura app móvil (requeriría validar que el
   `id_user_vehicle` del pedido corresponda al usuario autenticado).
-- **Sin `DELETE /orders/{id}`**: un pedido no se elimina; se cancelará con su propio endpoint.
+- **Sin `DELETE /orders/{id}`**: un pedido no se elimina; se cancela (`POST /orders/{id}/cancel`).
 
 ### Concurrencia — bloqueo de fila en transiciones de estado
 
 Las operaciones que **validan el estado del pedido y luego lo cambian** leen el pedido con
 `OrderService.get_for_update()` (→ `BaseRepository.get_for_update()`, un
 `SELECT ... FOR UPDATE` con `populate_existing=True`): `dispatch_order`, `deliver_order`,
-`sync_items` y el `PATCH` de reasignación de conductor (`OrderService.update`).
+`cancel_order`, `sync_items` y el `PATCH` de reasignación de conductor (`OrderService.update`).
+El despacho múltiple bloquea todos sus pedidos a la vez
+(`RepositoryOrder.get_many_for_update`, en orden de `id_order`).
 
 La fila queda bloqueada hasta el `commit()`/`rollback()` de esa petición. Si llegan dos
 peticiones sobre el mismo pedido, la segunda **espera** y luego valida contra el estado ya
@@ -1265,6 +1408,13 @@ Cómo ejecutarlas: ver `README.md`.
   diario, filtros por rango de fechas, histórico, archivado (exportación, verificación y
   purga) y cierre (resumen, Excel, reexportación y bloqueo de la purga) — incluye la
   regresión de cada bug corregido.
+- **Cambios finales:** columnas y restricciones nuevas (`test_order_billing_columns.py`),
+  pago, factura y observación (`test_order_billing.py`), detalle y auditoría
+  (`test_order_detail_audit.py`), orden en el servidor (`test_admin_sorting.py`), motor del
+  cierre sin BD (`test_closure_consolidation.py`) y el Excel de 3 hojas con cruces entre
+  hojas, la huella y los días sin cerrar (`test_shift_closure.py`). Para cancelar un pedido
+  directo en la BD en un test: `mark_cancelled(db, id)` de `tests/helpers.py` (pone el
+  motivo que exige `chk_order_cancel_reason`).
 
 ---
 
@@ -1336,3 +1486,7 @@ Cómo ejecutarlas: ver `README.md`.
 17. Listados que crecen sin límite (administración) → paginados en el servidor con
     `get_page_params` + `paginate` + `Page[Row]` (sección 3), con filtros y orden en SQL y
     el `ORDER BY` terminado en la PK. Nunca traer la tabla completa al frontend.
+18. Reglas de negocio que varias piezas consultan (p. ej. "lleva CD") → un solo lugar
+    (`hybrid_property` del modelo o un módulo de cálculo sin BD), nunca reescritas en cada
+    servicio. Reportes que deben cuadrar entre sí (cierre) → una sola carga de datos y todo
+    calculado sobre los mismos objetos, con tests que crucen los totales.

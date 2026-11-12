@@ -21,7 +21,8 @@ COMPANY = {
     "address": "Calle 2 Sur N° 5A-09 · Neiva, Huila",
     "phones": "Tel. 873 1402 · 873 0161",
 }
-DEFAULT_CLIENT = {"name": "CUANTÍAS MENORES", "nit": "2222222222-9"}
+# Dirección y teléfono del cliente son opcionales
+NOT_REGISTERED = "NO REGISTRA"
 
 LOGO_PATH = Path(__file__).parent / "assets" / "logo_foca.png"
 
@@ -64,6 +65,10 @@ COL_DESC_X = LEFT + 9 * mm  # inicio de DESCRIPCIÓN
 COL_DESC_W = 32 * mm  # ancho útil de DESCRIPCIÓN
 COL_UNIT_R = LEFT + 54 * mm  # borde derecho de V. UNIT
 COL_TOTAL_R = RIGHT - 1.5 * mm  # borde derecho de TOTAL
+
+
+def _or_not_registered(value: str | None) -> str:
+    return value.strip().upper() if value and value.strip() else NOT_REGISTERED
 
 
 def money(value) -> str:
@@ -110,6 +115,7 @@ class PdfService:
         y = self._header(c, y)
         y = self._title_block(c, y, order)
         y = self._info_block(c, y, order)
+        y = self._delivery_block(c, y, order)
         y = self._items_table(c, y, order)
         y = self._totals(c, y, order)
         y = self._footer(c, y)
@@ -180,27 +186,51 @@ class PdfService:
         return y - 10 * mm - gap_bottom
 
     def _info_block(self, c, y, order):
-        p = self.palette
         # La BD entrega el instante en UTC; se muestra en hora de Bogotá
         created: datetime = order.creation_datetime.astimezone(BOGOTA_TZ)
         dispatch = (
             order.dispatch_time.strftime("%H:%M:%S") if order.dispatch_time else "—"
         )
-        rows = [
-            ("Fecha", order.delivery_date.strftime("%Y-%m-%d")),
-            ("Generación", created.strftime("%H:%M:%S")),
-            ("Hora despacho", dispatch),
-            ("Cliente", DEFAULT_CLIENT["name"]),
-            ("CC / NIT", DEFAULT_CLIENT["nit"]),
-            ("Conductor", (order.driver_name or "SIN ASIGNAR").upper()),
-        ]
+        return self._data_box(
+            c,
+            y,
+            [
+                ("Fecha entrega", order.delivery_date.strftime("%Y-%m-%d")),
+                # Siempre con fecha: un pedido programado se genera otro día
+                ("Generado", created.strftime("%Y-%m-%d %H:%M")),
+                ("Hora despacho", dispatch),
+                ("Conductor", (order.driver_name or "SIN ASIGNAR").upper()),
+            ],
+        )
 
+    # Guía para el domiciliario: a dónde va el pedido
+    def _delivery_block(self, c, y, order):
+        p = self.palette
+        c.setFillColor(p["primary"])
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(LEFT + 1 * mm, y, "DATOS DE ENTREGA")
+        y -= 2.5 * mm
+        return self._data_box(
+            c,
+            y,
+            [
+                ("Cliente", order.client_name.upper()),
+                ("Dirección", _or_not_registered(order.client_address)),
+                ("Barrio", order.neighborhood_name.upper()),
+                ("Zona", order.zone_name.upper()),
+                ("Teléfono", _or_not_registered(order.client_phone)),
+            ],
+        )
+
+    # Recuadro de etiqueta → valor; los valores largos parten línea y el alto
+    # del recuadro se calcula antes de dibujar
+    def _data_box(self, c, y, rows: list[tuple[str, str]]):
+        p = self.palette
         label_x = LEFT + 3 * mm
         value_x = LEFT + 24 * mm
         value_w = RIGHT - 3 * mm - value_x
         line_h = 3.8 * mm
 
-        # Se calculan las líneas antes de dibujar para dimensionar el recuadro
         wrapped = [
             (lbl, simpleSplit(val, "Helvetica-Bold", 7.5, value_w)) for lbl, val in rows
         ]
@@ -212,7 +242,7 @@ class PdfService:
         c.rect(LEFT, y - box_h + 1.8 * mm, 0.9 * mm, box_h - 3.6 * mm, stroke=0, fill=1)
 
         ty = y - 4.2 * mm
-        for i, (lbl, lines) in enumerate(wrapped):
+        for lbl, lines in wrapped:
             c.setFillColor(p["muted"])
             c.setFont("Helvetica", 7)
             c.drawString(label_x, ty, lbl)
@@ -221,15 +251,6 @@ class PdfService:
             for line in lines:
                 c.drawString(value_x, ty, line)
                 ty -= line_h
-            if i == 2:  # separador entre fechas y datos del cliente
-                c.setStrokeColor(p["rule"])
-                c.setLineWidth(0.4)
-                c.line(
-                    label_x,
-                    ty + line_h - 1.3 * mm,
-                    RIGHT - 3 * mm,
-                    ty + line_h - 1.3 * mm,
-                )
         return y - box_h - 5 * mm
 
     def _items_table(self, c, y, order):

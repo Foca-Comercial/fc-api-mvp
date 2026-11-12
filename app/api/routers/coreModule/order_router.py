@@ -7,10 +7,14 @@ from app.api.dependencies import CurrentUser, get_current_user
 from app.api.routers.auth.secured_router import SecuredRouter
 from app.core.timezone import today_bogota
 from app.db.database import get_db
+from app.schemas.common.page_schema import SortDirection
 from app.schemas.coreModule.order_history_schema import OrderHistoryPage
 from app.schemas.coreModule.order_schema import (
+    OrderCancelRequest,
     OrderCreateExistingClient,
     OrderCreateNewClient,
+    OrderDispatchBatchRequest,
+    OrderDispatchBatchResponse,
     OrderFullDetailResponse,
     OrderItemsSyncRequest,
     OrderResponse,
@@ -26,7 +30,9 @@ from app.schemas.coreModule.route_order_schema import (
 )
 from app.services.coreModule.order_service import order_service
 from app.services.pdf.pdf_service import pdf_service
+from app.utils.enums.invoice_type import InvoiceType
 from app.utils.enums.order_state import OrderState
+from app.utils.enums.payment_method import PaymentMethod
 from app.utils.exceptions.business_exceptions import BusinessValidationError
 
 router = SecuredRouter(prefix="/orders", tags=["Orders"])
@@ -44,9 +50,10 @@ def get_all_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db
 )
 def get_dashboard_summary(
     target_date: date | None = Query(default_factory=today_bogota),  # type: ignore  # noqa: B008
+    id_route: int | None = Query(None, gt=0),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
-    return order_service.get_dashboard_summary(db, target_date)  # type: ignore
+    return order_service.get_dashboard_summary(db, target_date, id_route)  # type: ignore
 
 
 @router.get(
@@ -56,9 +63,10 @@ def get_dashboard_summary(
 )
 def get_dispatched_summary(
     target_date: date | None = Query(default_factory=today_bogota),  # type: ignore  # noqa: B008
+    id_route: int | None = Query(None, gt=0),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
-    return order_service.get_dispatched_summary(db, target_date)  # type: ignore
+    return order_service.get_dispatched_summary(db, target_date, id_route)  # type: ignore
 
 
 # -----------------------------------------------------
@@ -78,8 +86,21 @@ def get_order_history(
     search: str | None = Query(
         None, min_length=1, description="Nombre del cliente o N.° de pedido exacto"
     ),
+    payment_method: PaymentMethod | None = None,
+    invoice_type: InvoiceType | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    sort_by: str | None = Query(
+        None,
+        max_length=40,
+        pattern=r"^[a-z_]+$",
+        description="date (por defecto), purchase_order, client_name, zone_name, "
+        "route_name, total_quantity, total, driver_name, state, payment_method, "
+        "invoice_type",
+    ),
+    sort_dir: SortDirection = Query(
+        "asc", description="asc (por defecto: del más antiguo al más nuevo) o desc"
+    ),
     db: Session = Depends(get_db),  # noqa: B008
 ):
     return order_service.get_history(
@@ -92,6 +113,10 @@ def get_order_history(
         search=search,
         page=page,
         page_size=page_size,
+        payment_method=payment_method,
+        invoice_type=invoice_type,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
 
 
@@ -194,6 +219,23 @@ def dispatch_order(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
     return order_service.dispatch_order(db, id_order)
 
 
+# Despachar varios pedidos a la vez (todo o nada)
+@router.post(
+    "/dispatch-batch",
+    response_model=OrderDispatchBatchResponse,
+    roles=["GESTOR_COMERCIAL"],
+)
+def dispatch_orders_batch(
+    body: OrderDispatchBatchRequest,
+    db: Session = Depends(get_db),  # noqa: B008
+):
+    orders = order_service.dispatch_batch(db, body.ids)
+    return OrderDispatchBatchResponse(
+        dispatched=len(orders),
+        orders=[OrderResponse.model_validate(o) for o in orders],
+    )
+
+
 # Generar CD
 @router.get(
     "/{id_order}/receipt",
@@ -208,6 +250,13 @@ def dispatch_order(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
 )
 def get_dispatch_receipt(id_order: int, db: Session = Depends(get_db)):  # noqa: B008
     order = order_service.get(db, id_order)  # chequeo liviano, sin joins pesados
+    if not order.has_receipt:
+        raise BusinessValidationError(
+            "Este pedido no lleva comprobante de despacho: solo los pedidos POS en "
+            "efectivo lo tienen.",
+            field="payment_method",
+            code="RECEIPT_NOT_AVAILABLE",
+        )
     if order.dispatch_time is None:
         raise BusinessValidationError(
             "El pedido aún no ha sido despachado; no hay comprobante para imprimir.",
@@ -223,6 +272,23 @@ def get_dispatch_receipt(id_order: int, db: Session = Depends(get_db)):  # noqa:
         headers={
             "Content-Disposition": f"attachment; filename=CD_{full_order.purchase_order}.pdf"
         },
+    )
+
+
+# Cancelar un pedido con motivo (queda registrado quién y cuándo)
+@router.post(
+    "/{id_order}/cancel",
+    response_model=OrderResponse,
+    roles=["GESTOR_COMERCIAL"],
+)
+def cancel_order(
+    id_order: int,
+    body: OrderCancelRequest,
+    db: Session = Depends(get_db),  # noqa: B008
+    current: CurrentUser = Depends(get_current_user),  # noqa: B008
+):
+    return order_service.cancel_order(
+        db, id_order, body, id_user=current.user.id_user
     )
 
 
@@ -251,8 +317,12 @@ def sync_order_items(
     order_id: int,
     body: OrderItemsSyncRequest,
     db: Session = Depends(get_db),  # noqa: B008
+    current: CurrentUser = Depends(get_current_user),  # noqa: B008
 ):
-    return order_service.sync_items(db, id_order=order_id, items=body.items)
+    # Quien edita queda registrado como el último que cambió los productos
+    return order_service.sync_items(
+        db, id_order=order_id, items=body.items, id_user=current.user.id_user
+    )
 
 
 @router.patch("/{order_id}", response_model=OrderResponse, roles=["GESTOR_COMERCIAL"])
@@ -264,5 +334,4 @@ def update_order(
     return order_service.update(db, id=order_id, obj_in=order_in)
 
 
-# Sin DELETE: un pedido no se elimina, se cancela (transición a CANCELLED,
-# pendiente de implementar con su propio endpoint).
+# Sin DELETE: un pedido no se elimina, se cancela (POST /{id_order}/cancel).

@@ -14,9 +14,8 @@ from app.models.coreModule.monthly_archive import MonthlyArchive
 from app.models.coreModule.order import Order
 from app.services.coreModule.archive_export import HEADER, MONEY_COLUMNS
 from app.utils.enums.archive_status import ArchiveStatus
-from app.utils.enums.order_state import OrderState
 from app.utils.exceptions.business_exceptions import ExternalServiceError
-from tests.helpers import API, item
+from tests.helpers import API, item, mark_cancelled
 
 SHEET_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abc"
 
@@ -43,7 +42,7 @@ def test_exporta_una_fila_por_producto_y_registra_la_bitacora(
         id_user_vehicle=data.user_vehicle.id_user_vehicle,
     )
     cancelled = create_order(items=[item(p0, 1)])
-    db.get(Order, cancelled["id_order"]).state = OrderState.CANCELLED
+    mark_cancelled(db, cancelled["id_order"])
     db.commit()
 
     response = _export(admin, period)
@@ -185,3 +184,36 @@ def test_verificacion_de_filas_fallida(admin, writer, create_order, period, db):
 
 def test_solo_admin_exporta(client, writer, period):
     assert _export(client, period).status_code == 403
+
+
+# --- Cambios finales B7 (paso 3): pago, factura, observación y motivo -------------------
+
+
+def test_exporta_pago_factura_observacion_y_motivo(
+    admin, writer, create_order, period, db
+):
+    first = create_order(
+        payment_method="TRANSFER", invoice_type="ELECTRONIC", observations="Portería"
+    )
+    second = create_order()
+    mark_cancelled(db, second["id_order"])
+    db.commit()
+
+    response = _export(admin, period)
+
+    assert response.status_code == 200, response.text
+    sheet = writer.sheets[(SHEET_ID, period)]
+    assert sheet["header"][-4:] == [
+        "Método pago",
+        "Tipo factura",
+        "Observación",
+        "Motivo cancelación",
+    ]
+    by_po = {row[2]: row for row in sheet["rows"]}
+    assert by_po[first["purchase_order"]][-4:] == [
+        "Transferencia",
+        "Electrónica",
+        "Portería",
+        "",
+    ]
+    assert by_po[second["purchase_order"]][-4:] == ["Efectivo", "POS", "", "Otro"]

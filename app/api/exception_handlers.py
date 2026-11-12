@@ -1,5 +1,6 @@
 import logging
 from http import HTTPStatus
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -51,9 +52,15 @@ def _db_error_code(exc: IntegrityError) -> str | int | None:
 
 
 def _error_body(
-    detail: str, code: str, field: str | None = None
-) -> dict[str, str | None]:
-    return {"detail": detail, "code": code, "field": field}
+    detail: str,
+    code: str,
+    field: str | None = None,
+    details: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"detail": detail, "code": code, "field": field}
+    if details is not None:
+        body["details"] = details
+    return body
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -63,7 +70,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=_status_for(exc),
-            content=_error_body(exc.message, exc.code, exc.field),
+            content=_error_body(exc.message, exc.code, exc.field, exc.details),
         )
 
     @app.exception_handler(IntegrityError)

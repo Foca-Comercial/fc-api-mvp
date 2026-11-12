@@ -12,7 +12,7 @@ app/repositories/pagination.py y el servicio arma la respuesta con `Page.build`.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Generic, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -21,14 +21,21 @@ DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 200
 
 ItemType = TypeVar("ItemType")
+SortDirection = Literal["asc", "desc"]
 
 
 @dataclass(frozen=True)
 class PageParams:
-    """Página pedida (1 = la primera) y su tamaño."""
+    """Página pedida (1 = la primera), su tamaño y el orden pedido.
+
+    `sort_by` es el nombre de un campo ordenable del listado (cada repositorio
+    declara los suyos); sin valor, el listado usa su orden por defecto.
+    """
 
     page: int = 1
     page_size: int = DEFAULT_PAGE_SIZE
+    sort_by: str | None = None
+    sort_dir: SortDirection = "asc"
 
     @property
     def offset(self) -> int:

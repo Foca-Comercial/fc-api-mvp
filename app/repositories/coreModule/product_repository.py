@@ -7,7 +7,7 @@ from app.models.coreModule.order_detail import OrderDetail
 from app.models.coreModule.product import Product
 from app.models.coreModule.special_customer_price import SpecialCustomerPrice
 from app.repositories.base_repository import BaseRepository
-from app.repositories.pagination import paginate
+from app.repositories.pagination import order_clause, paginate
 from app.schemas.common.page_schema import PageParams
 from app.schemas.coreModule.product_schema import (
     ProductAdminFilters,
@@ -104,7 +104,21 @@ class RepositoryProduct(BaseRepository[Product, ProductCreate, ProductUpdate]):
         stmt = (
             self._admin_select()
             .where(*conditions)
-            .order_by(Product.code, Product.id_product)
+            .order_by(
+                *order_clause(
+                    params,
+                    {
+                        "code": Product.code,
+                        "name": Product.name,
+                        "base_price": Product.base_price,
+                        "active": Product.active,
+                        "special_prices_count": "special_prices_count",
+                        "in_use": "in_use",
+                    },
+                    default=[Product.code],
+                    tiebreak=Product.id_product,
+                )
+            )
         )
         count_stmt = select(Product.id_product).where(*conditions)
         return paginate(db, stmt, params, count_stmt=count_stmt)

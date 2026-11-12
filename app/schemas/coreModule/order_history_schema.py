@@ -6,7 +6,9 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
+from app.utils.enums.invoice_type import InvoiceType
 from app.utils.enums.order_state import OrderState
+from app.utils.enums.payment_method import PaymentMethod
 
 
 @dataclass(frozen=True)
@@ -19,6 +21,8 @@ class OrderHistoryFilters:
     id_route: int | None = None
     id_user_vehicle: int | None = None
     search: str | None = None
+    payment_method: PaymentMethod | None = None
+    invoice_type: InvoiceType | None = None
 
 
 class OrderHistoryRow(BaseModel):
@@ -35,6 +39,8 @@ class OrderHistoryRow(BaseModel):
     driver_code: str | None
     driver_name: str | None
     state: OrderState
+    payment_method: PaymentMethod
+    invoice_type: InvoiceType
 
 
 class OrderHistoryPage(BaseModel):

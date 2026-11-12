@@ -25,6 +25,7 @@ _REQUIRED_ON_UPDATE = {
     "name": "nombre",
     "id_neighborhood": "barrio",
     "active": "estado",
+    "requires_electronic_invoice": "indicador de factura electrónica",
 }
 
 

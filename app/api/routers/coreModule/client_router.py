@@ -52,6 +52,9 @@ def list_clients_admin(
     ),
     active: bool | None = Query(None, description="Sin valor: activos e inactivos"),
     id_zone: int | None = Query(None, gt=0),
+    electronic_invoice: bool | None = Query(
+        None, description="Sin valor: con y sin factura electrónica"
+    ),
     params: PageParams = Depends(get_page_params),  # noqa: B008
     db: Session = Depends(get_db),  # noqa: B008
 ):
@@ -59,6 +62,7 @@ def list_clients_admin(
         search=search.strip() if search and search.strip() else None,
         active=active,
         id_zone=id_zone,
+        electronic_invoice=electronic_invoice,
     )
     return client_service.get_admin_page(db, filters=filters, params=params)
 

@@ -34,5 +34,9 @@ class User(Base):
 
     # PNI
     user_roles: Mapped[list["UserRole"]] = relationship(back_populates="user")
-    orders: Mapped[list["Order"]] = relationship(back_populates="user_taker")
+    # sale_order tiene varias FK a app_user (quien toma, cancela y edita): esta
+    # relación es la de quien tomó el pedido
+    orders: Mapped[list["Order"]] = relationship(
+        back_populates="user_taker", foreign_keys="Order.id_user_taker"
+    )
     sessions: Mapped[list["UserSession"]] = relationship(back_populates="user")

@@ -1,6 +1,14 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, String
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    String,
+    false,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -14,7 +22,14 @@ if TYPE_CHECKING:
 
 class Client(Base):
     __tablename__ = "client"
-    __table_args__ = (Index("idx_client_neighborhood", "id_neighborhood"),)
+    __table_args__ = (
+        Index("idx_client_neighborhood", "id_neighborhood"),
+        # Un cliente temporal (creado desde el pedido) siempre factura POS
+        CheckConstraint(
+            "is_registered OR NOT requires_electronic_invoice",
+            name="chk_client_electronic_invoice_registered",
+        ),
+    )
 
     id_client: Mapped[int] = mapped_column(
         BigInteger, primary_key=True, autoincrement=True
@@ -24,6 +39,11 @@ class Client(Base):
     address: Mapped[str | None] = mapped_column(String(200), nullable=True)
     is_registered: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Se le hace factura electrónica (informativo, como los precios pactados): sus
+    # pedidos nacen con invoice_type = ELECTRONIC
+    requires_electronic_invoice: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
 
     # Claves Foraneas
     id_neighborhood: Mapped[int] = mapped_column(
